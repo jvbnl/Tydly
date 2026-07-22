@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f0eee9;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif}
+a{color:#2a78d6}a:hover{color:#1c5aa8}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 -apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 -apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;color:rgba(0,0,0,.55)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+.dv-next{margin:22px 0 0;font:12px/1.5 -apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;color:rgba(0,0,0,.5)}
+.dv-card{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;color:#2b2a27;font-size:12.5px;line-height:1.35}
+.note{font-size:12px;color:#8a867e}
+.h{font-size:14px;color:#2b2a27}
+.big{font-size:16px}
+.ln{height:7px;border-radius:4px;background:#ddd9d1}
+.sep{height:1px;background:#e8e5de;margin:2px 0}
+.r{display:flex;align-items:center;gap:8px}
+.c{display:flex;flex-direction:column;gap:7px}
+.mbar{height:26px;background:#f4f2ee;border:1px solid #dcd9d2;border-radius:7px;display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:0 10px}
+.mi{width:11px;height:11px;border-radius:3px;background:#cdc9c1}
+.clock{font-size:11px;color:#77736a;font-family:system-ui}
+.icell{position:relative;width:40px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center}
+.icell.on{background:#dcd9d2}
+.gx{position:relative;width:16px;height:13px;border:1.6px solid #2b2a27;border-radius:3px}
+.gx::before{content:"";position:absolute;left:2px;right:2px;top:2px;border-top:1.6px solid #2b2a27}
+.bd{position:absolute;top:1px;right:4px;width:7px;height:7px;border-radius:50%;border:1.5px solid #f4f2ee}
+.pulse{animation:wfpulse 1.6s infinite}
+@keyframes wfpulse{0%{box-shadow:0 0 0 0 rgba(42,120,214,.45)}70%{box-shadow:0 0 0 5px rgba(42,120,214,0)}100%{box-shadow:0 0 0 0 rgba(42,120,214,0)}}
+.pop{width:320px;background:#fff;border:1.6px solid #2b2a27;border-radius:12px;box-shadow:4px 4px 0 rgba(0,0,0,.07);padding:12px;display:flex;flex-direction:column;gap:9px}
+.caret{width:11px;height:11px;background:#fff;border-left:1.6px solid #2b2a27;border-top:1.6px solid #2b2a27;transform:rotate(45deg);margin:-4px 26px -8px auto;position:relative;z-index:1}
+.frame{width:200px;background:#fff;border:1.6px solid #2b2a27;border-radius:10px;padding:11px;display:flex;flex-direction:column;gap:8px;box-shadow:3px 3px 0 rgba(0,0,0,.06)}
+.btn{border:1.6px solid #2b2a27;border-radius:6px;padding:1px 10px;background:#fff;font-size:12px;white-space:nowrap}
+.btn.pri{background:#2b2a27;color:#fff}
+.chip{display:inline-flex;align-items:center;gap:4px;border:1px solid #cfccc4;border-radius:999px;padding:0 8px;font-size:11px;color:#66625a;background:#faf9f6;white-space:nowrap}
+.cb{flex:none;width:12px;height:12px;border:1.6px solid #2b2a27;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:9px}
+.dot{flex:none;width:7px;height:7px;border-radius:50%;background:#2a78d6}
+.av{flex:none;width:24px;height:24px;border-radius:50%;border:1.6px solid #2b2a27;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;position:relative}
+.av.f{background:#2a78d6;border-color:#2a78d6;color:#fff}
+.cnt{position:absolute;top:-5px;right:-6px;min-width:12px;height:12px;border-radius:6px;background:#d68a2a;color:#fff;font-size:8.5px;line-height:12px;text-align:center;font-family:system-ui;padding:0 2px}
+.log{font-size:12px;color:#55524b}
+.undo{color:#2a78d6;text-decoration:underline;cursor:pointer}
+.fb{position:absolute;bottom:2px;width:2.5px;background:#2a78d6;border-radius:1px}
+.hf{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,sans-serif;color:#1d1d1f;font-size:13px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.wall{position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(140deg,#b3c7e6 0%,#cbb9de 45%,#ecc9cf 100%)}
+.hbar{height:30px;display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:0 12px;background:rgba(255,255,255,.5);backdrop-filter:blur(24px);font-size:12px;font-weight:500;color:#1d1d1f}
+.hpill{position:relative;display:flex;align-items:center;justify-content:center;height:22px;padding:0 7px;border-radius:5px}
+.hpill.on{background:rgba(0,0,0,.09)}
+.hg{position:relative;width:15px;height:12px;border:1.5px solid #1d1d1f;border-radius:3px}
+.hg::before{content:"";position:absolute;left:2px;right:2px;top:2px;border-top:1.5px solid #1d1d1f}
+.hbd{position:absolute;top:1px;right:2px;width:6px;height:6px;border-radius:50%;border:1.5px solid rgba(255,255,255,.9)}
+.batt{position:relative;width:21px;height:10px;border:1px solid rgba(29,29,31,.55);border-radius:3px}
+.batt::before{content:"";position:absolute;left:1px;top:1px;bottom:1px;width:70%;background:#1d1d1f;border-radius:1.5px}
+.batt::after{content:"";position:absolute;right:-3px;top:2.5px;width:2px;height:4px;background:rgba(29,29,31,.55);border-radius:0 1px 1px 0}
+.hpop{width:330px;background:rgba(247,247,249,.9);backdrop-filter:blur(28px) saturate(1.5);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.24),0 0 0 .5px rgba(0,0,0,.14);padding:12px}
+.hsep{height:1px;background:rgba(0,0,0,.08);margin:9px -12px}
+.hrow{display:flex;align-items:center;gap:8px}
+.hcol{display:flex;flex-direction:column;gap:6px}
+.hhd{font-size:11px;font-weight:600;color:rgba(60,60,67,.6);letter-spacing:.03em}
+.htitle{font-size:15px;font-weight:600}
+.hsub{font-size:11.5px;color:rgba(60,60,67,.65)}
+.hlog{font-size:12px;color:#1d1d1f}
+.hbtn{display:inline-flex;align-items:center;font-size:12px;font-weight:500;padding:3.5px 12px;border-radius:7px;background:#007AFF;color:#fff;white-space:nowrap}
+.hbtn.sec{background:rgba(120,120,128,.16);color:#1d1d1f}
+.hchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:1.5px 8px;border-radius:999px;background:rgba(120,120,128,.13);color:rgba(60,60,67,.75);white-space:nowrap}
+.hav{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff;position:relative;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
+.hdot{flex:none;width:7px;height:7px;border-radius:50%}
+.hcard{background:rgba(255,255,255,.72);border-radius:10px;padding:9px;box-shadow:0 0 0 .5px rgba(0,0,0,.06)}
+.hlink{color:#007AFF;font-size:12px;cursor:pointer}
+.tl{width:11px;height:11px;border-radius:50%}
+.hcnt{position:absolute;top:-4px;right:-5px;min-width:14px;height:14px;border-radius:7px;background:#FF9F0A;color:#fff;font-size:9px;font-weight:700;line-height:14px;text-align:center;padding:0 3px}
+.fic{width:38px;height:28px;background:rgba(255,255,255,.92);border-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.18);position:relative}
+.fic::before{content:"";position:absolute;left:6px;right:6px;top:7px;height:2px;background:rgba(0,0,0,.15);border-radius:1px}
+.fic::after{content:"";position:absolute;left:6px;right:14px;top:13px;height:2px;background:rgba(0,0,0,.12);border-radius:1px}
+.gho{border:1.5px dashed #007AFF;background:rgba(0,122,255,.08);box-shadow:none}
+.gho::before,.gho::after{background:rgba(0,122,255,.25)}
+.dico{display:flex;flex-direction:column;align-items:center;gap:3px;width:62px}
+.dlab{font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);text-align:center;max-width:62px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cur{width:0;height:0;border-left:12px solid #007AFF;border-top:5px solid transparent;border-bottom:13px solid transparent;transform:rotate(-15deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
+.ctag{background:#007AFF;color:#fff;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.25);white-space:nowrap}
+.dbar{display:flex;align-items:center;gap:10px;background:rgba(28,28,30,.88);backdrop-filter:blur(20px);border-radius:999px;padding:7px 8px 7px 14px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.fchip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.85);border-radius:5px;padding:2px 7px;font-size:10.5px;box-shadow:0 0 0 .5px rgba(0,0,0,.08);white-space:nowrap}
+.sc{--pri:#007AFF;--fg:#1d1d1f;--mut:rgba(60,60,67,.6);--brd:rgba(0,0,0,.1);font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;color:var(--fg);font-size:13px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.scard{background:#fff;border:.5px solid var(--brd);border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.schd{display:flex;flex-direction:column;gap:2px;padding:14px 16px 0}
+.scti{font-size:13px;font-weight:600}
+.scde{font-size:12px;color:var(--mut)}
+.scct{padding:12px 16px}
+.scft{display:flex;align-items:center;gap:8px;padding:0 16px 14px}
+.sbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:500;background:var(--pri);color:#fff;white-space:nowrap;box-shadow:0 1px 2px rgba(0,122,255,.3)}
+.sbtn.sec{background:rgba(120,120,128,.12);color:var(--fg);box-shadow:none}
+.sbtn.out{background:#fff;color:var(--fg);box-shadow:none;border:.5px solid var(--brd)}
+.sbtn.lnk{background:transparent;color:var(--pri);box-shadow:none}
+.sbtn.des{background:rgba(255,59,48,.1);color:#d70015;box-shadow:none}
+.sbtn.sm{height:24px;padding:0 9px;font-size:11.5px;border-radius:7px}
+.sbdg{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:600;background:rgba(120,120,128,.13);color:var(--mut);white-space:nowrap}
+.sbdg.pri{background:rgba(0,122,255,.12);color:#0a63c9}
+.sbdg.ok{background:rgba(52,199,89,.14);color:#1d7a3a}
+.sbdg.warn{background:rgba(255,159,10,.16);color:#b36b00}
+.sbdg.out{background:transparent;border:.5px solid var(--brd)}
+.ssep{height:.5px;background:var(--brd)}
+.ssw{flex:none;width:34px;height:20px;border-radius:10px;background:#34C759;position:relative}
+.ssw::after{content:"";position:absolute;top:1.5px;right:1.5px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.ssw.off{background:rgba(120,120,128,.25)}
+.ssw.off::after{right:auto;left:1.5px}
+.sseg{display:flex;gap:2px;background:rgba(120,120,128,.13);border-radius:8px;padding:2px}
+.sseg span{flex:1;text-align:center;font-size:11.5px;font-weight:500;padding:3px 10px;border-radius:6px;color:var(--mut);white-space:nowrap}
+.sseg .on{background:#fff;color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.1);font-weight:600}
+.sprog{height:5px;border-radius:3px;background:rgba(120,120,128,.15);overflow:hidden;position:relative}
+.sprog i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--pri)}
+.srow{display:flex;align-items:center;gap:10px;padding:9px 16px}
+.srow+.srow{border-top:.5px solid var(--brd)}
+.nsm{width:290px;background:rgba(246,246,248,.88);backdrop-filter:blur(30px) saturate(1.6);border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.12);padding:5px;display:flex;flex-direction:column;font-size:13px}
+.mrow{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:7px}
+.msec{padding:4px 10px 2px;font-size:11px;font-weight:600;color:rgba(60,60,67,.6)}
+.msep{height:.5px;background:rgba(0,0,0,.1);margin:4px 10px}
+.fch{display:inline-flex;align-items:center;gap:4px;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500;white-space:nowrap}
+.slbl{font-size:12.5px;font-weight:500}
+.ssub2{font-size:11px;color:var(--mut)}
+</style>
+</helmet>
+<section class="dv-turn" id="t8">
+<div class="dv-thd"><a class="dv-tid" href="#t8">8</a><span class="dv-tname">Round 8 — popover style variants: same content, four languages</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="8a">
+<div class="dv-olabel"><a class="dv-oid" href="#8a">8a</a>Native NSMenu — the literal Wi-Fi pattern</div>
+<div class="dv-card"><div class="wall sc" style="width:340px;padding:14px 14px 22px">
+<div style="width:280px;margin:0 auto;background:rgba(246,246,248,.85);backdrop-filter:blur(30px) saturate(1.6);border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.12);padding:5px;display:flex;flex-direction:column;font-size:13px">
+<div style="display:flex;align-items:center;gap:8px;padding:5px 10px"><span style="font-weight:600">Otto</span><span style="margin-left:auto;font-size:11px;color:rgba(60,60,67,.6)">All tidy</span><span class="ssw" style="transform:scale(.8)"></span></div>
+<div class="ssep" style="margin:4px 10px"></div>
+<div style="padding:3px 10px;font-size:11px;font-weight:600;color:rgba(60,60,67,.6)">Needs you</div>
+<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:#007AFF;border-radius:7px;color:#fff"><span class="hav" style="background:rgba(255,255,255,.25);width:20px;height:20px;font-size:9px;box-shadow:none">A</span><span>12 screenshots → Atlas</span><span style="margin-left:auto;opacity:.8">›</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;color:rgba(60,60,67,.9)"><span style="width:20px;display:inline-flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.3 1.4"></path></svg></span><span>4 parked</span><span style="margin-left:auto;color:rgba(60,60,67,.4)">›</span></div>
+<div class="ssep" style="margin:4px 10px"></div>
+<div style="padding:3px 10px;font-size:11px;font-weight:600;color:rgba(60,60,67,.6)">Today</div>
+<div style="display:flex;align-items:center;gap:8px;padding:4px 10px"><span style="color:#34C759">✓</span><span>Filed 3 screenshots</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Atlas</span><span style="font-size:11px;color:#007AFF">↩</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding:4px 10px"><span style="color:#34C759">✓</span><span>Filed 1 invoice</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Finance</span><span style="font-size:11px;color:#007AFF">↩</span></div>
+<div class="ssep" style="margin:4px 10px"></div>
+<div style="display:flex;align-items:center;gap:8px;padding:4px 10px;color:rgba(60,60,67,.9)"><span>Settings…</span><span style="margin-left:auto;font-size:11px;color:rgba(60,60,67,.4)">⌘,</span></div>
+</div>
+</div></div>
+<div class="note" style="max-width:340px">Exactly like the Wi-Fi menu: flat rows, section labels, one master switch in the header, hover-blue selection. Zero chrome — the most native, least "app".</div>
+</div>
+
+<div class="dv-opt" id="8b">
+<div class="dv-olabel"><a class="dv-oid" href="#8b">8b</a>Control Center — glass modules</div>
+<div class="dv-card"><div class="wall sc" style="width:340px;padding:14px 14px 22px">
+<div style="width:290px;margin:0 auto;display:flex;flex-direction:column;gap:8px">
+<div style="background:rgba(255,255,255,.55);backdrop-filter:blur(30px) saturate(1.6);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.5);padding:12px;display:flex;align-items:center;gap:10px">
+<span class="hav" style="background:#3478f6;width:34px;height:34px;font-size:14px;box-shadow:none">O</span>
+<div style="display:flex;flex-direction:column"><span style="font-size:13px;font-weight:600">Otto</span><span style="font-size:11px;color:rgba(60,60,67,.65)">All tidy · watching 2 folders</span></div>
+<span class="ssw" style="margin-left:auto"></span>
+</div>
+<div style="background:rgba(255,255,255,.55);backdrop-filter:blur(30px);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.5);padding:12px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;font-weight:600;color:rgba(60,60,67,.6)">NEEDS YOU</span><span class="sbdg warn" style="margin-left:auto">1</span></div>
+<div style="display:flex;align-items:center;gap:8px"><span class="hav" style="background:#3478f6;width:22px;height:22px;font-size:10px;box-shadow:none">A</span><span style="font-size:12.5px;font-weight:500">12 screenshots → Atlas</span></div>
+<div style="display:flex;gap:6px"><span class="sbtn sm" style="flex:1">Show me</span><span class="sbtn sm" style="background:rgba(120,120,128,.16);color:#1d1d1f;box-shadow:none">Skip</span></div>
+</div>
+<div style="display:flex;gap:8px">
+<div style="flex:1;background:rgba(255,255,255,.55);backdrop-filter:blur(30px);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.5);padding:10px;display:flex;flex-direction:column;gap:1px"><span style="font-size:17px;font-weight:700">4</span><span style="font-size:10.5px;color:rgba(60,60,67,.65)">filed today</span></div>
+<div style="flex:1;background:rgba(255,255,255,.55);backdrop-filter:blur(30px);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.5);padding:10px;display:flex;flex-direction:column;gap:1px"><span style="font-size:17px;font-weight:700">6</span><span style="font-size:10.5px;color:rgba(60,60,67,.65)">projects</span></div>
+</div>
+</div>
+</div></div>
+<div class="note" style="max-width:340px">Control Center language: floating glass modules, big identity tile, stat tiles. Feels like a system citizen; heavier visually than 8a.</div>
+</div>
+
+<div class="dv-opt" id="8c">
+<div class="dv-olabel"><a class="dv-oid" href="#8c">8c</a>Raycast-style — dark, keyboard-first</div>
+<div class="dv-card"><div class="wall sc" style="width:340px;padding:14px 14px 22px">
+<div style="width:290px;margin:0 auto;background:rgba(28,28,32,.92);backdrop-filter:blur(30px);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.4),inset 0 0 0 .5px rgba(255,255,255,.12);padding:6px;display:flex;flex-direction:column;color:#f2f2f4;font-size:12.5px">
+<div style="display:flex;align-items:center;gap:8px;padding:7px 10px"><span class="hdot" style="background:#FF9F0A"></span><span style="font-weight:600">1 decision</span><span style="margin-left:auto;font-size:10.5px;color:rgba(255,255,255,.4)"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg> local</span></div>
+<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:rgba(255,255,255,.09);border-radius:8px"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px;box-shadow:none">A</span><span>12 screenshots → Atlas</span><span style="margin-left:auto;font-size:10px;background:rgba(255,255,255,.12);border-radius:4px;padding:1px 5px">↵ show</span></div>
+<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;color:rgba(255,255,255,.75)"><span style="width:20px;text-align:center">✓</span><span>Filed 3 screenshots</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(255,255,255,.12);border-radius:5px;padding:1px 6px;font-size:10.5px"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Atlas</span><span style="font-size:10px;background:rgba(255,255,255,.12);border-radius:4px;padding:1px 5px">⌘Z</span></div>
+<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;color:rgba(255,255,255,.75)"><span style="width:20px;text-align:center">✓</span><span>Filed 1 invoice</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(255,255,255,.12);border-radius:5px;padding:1px 6px;font-size:10.5px"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Finance</span><span style="font-size:10px;background:rgba(255,255,255,.12);border-radius:4px;padding:1px 5px">⌘Z</span></div>
+<div style="height:.5px;background:rgba(255,255,255,.1);margin:4px 8px"></div>
+<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:10.5px;color:rgba(255,255,255,.45)"><span>Otto</span><span style="margin-left:auto">actions ⌘K</span></div>
+</div>
+</div></div>
+<div class="note" style="max-width:340px">Raycast vocabulary: dark glass, flat rows, kbd hints, ⌘K actions. Pro-user energy — fastest feel, least "Apple settings", most "tool".</div>
+</div>
+
+<div class="dv-opt" id="8d">
+<div class="dv-olabel"><a class="dv-oid" href="#8d">8d</a>shadcn crisp — bordered, dense, light</div>
+<div class="dv-card"><div class="wall sc" style="width:340px;padding:14px 14px 22px">
+<div style="width:290px;margin:0 auto;background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.08),0 0 0 .5px rgba(0,0,0,.12);padding:4px;display:flex;flex-direction:column;font-size:12.5px">
+<div style="display:flex;align-items:center;gap:8px;padding:8px 10px"><span style="font-weight:600">Otto</span><span class="sbdg warn" style="margin-left:auto">1 waiting</span><span class="sbdg out"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg></span></div>
+<div class="ssep" style="margin:0 6px"></div>
+<div style="padding:8px 10px;display:flex;flex-direction:column;gap:7px">
+<div style="display:flex;align-items:center;gap:8px"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px;box-shadow:none">A</span><div style="display:flex;flex-direction:column"><span style="font-weight:500">12 screenshots → Atlas</span><span style="font-size:10.5px;color:rgba(60,60,67,.55)">92% · matches "atlas-*"</span></div></div>
+<div style="display:flex;gap:6px"><span class="sbtn sm" style="flex:1">Show me</span><span class="sbtn out sm">Skip</span></div>
+</div>
+<div class="ssep" style="margin:0 6px"></div>
+<div style="padding:4px 6px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px"><span style="font-size:10.5px;color:rgba(60,60,67,.5);width:32px">14:02</span><span>Filed 3 screenshots</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Atlas</span><span class="sbtn lnk sm" style="padding:0">↩</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px"><span style="font-size:10.5px;color:rgba(60,60,67,.5);width:32px">11:40</span><span>Filed 1 invoice</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Finance</span><span class="sbtn lnk sm" style="padding:0">↩</span></div>
+</div>
+<div class="ssep" style="margin:0 6px"></div>
+<div style="display:flex;align-items:center;padding:7px 10px;font-size:10.5px;color:rgba(60,60,67,.5)"><span>Nothing moves without you</span><span style="margin-left:auto">⌘,</span></div>
+</div>
+</div></div>
+<div class="note" style="max-width:340px">shadcn dropdown-menu anatomy: opaque white, hairline separators, muted metadata, dense rows. Crispest hierarchy; least macOS materiality (no blur).</div>
+</div>
+
+</div>
+<p class="dv-next">My read: <a class="dv-oid" href="#8a">8a</a> for the menu, <a class="dv-oid" href="#8d">8d</a> density inside <a class="dv-oid" href="#8a">8a</a>'s material. Say "hybrid" and I'll build it.</p>
+</section>
+<section class="dv-turn" id="t7">
+<div class="dv-thd"><a class="dv-tid" href="#t7">7</a><span class="dv-tname">Round 7 — shadcn component anatomy, Apple-native skin</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="7a" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#7a">7a</a>The kit — shadcn primitives, our tokens</div>
+<div class="dv-card sc" style="padding:18px;display:flex;flex-wrap:wrap;gap:22px;background:#fafafa">
+<div style="display:flex;flex-direction:column;gap:8px">
+<span class="ssub2" style="font-weight:600;letter-spacing:.04em">BUTTON</span>
+<div style="display:flex;gap:8px;align-items:center"><span class="sbtn">Show me</span><span class="sbtn sec">Not quite…</span><span class="sbtn out">Skip</span><span class="sbtn lnk">why?</span><span class="sbtn des">Forget Atlas</span></div>
+<div style="display:flex;gap:8px;align-items:center"><span class="sbtn sm">File 12</span><span class="sbtn sec sm">↩ Undo</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span class="ssub2" style="font-weight:600;letter-spacing:.04em">BADGE</span>
+<div style="display:flex;gap:6px;align-items:center"><span class="sbdg pri">auto</span><span class="sbdg ok">done</span><span class="sbdg warn">2 waiting</span><span class="sbdg">asks</span><span class="sbdg out"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg> local</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;width:180px">
+<span class="ssub2" style="font-weight:600;letter-spacing:.04em">TABS · SWITCH · PROGRESS</span>
+<div class="sseg"><span class="on">Today</span><span>Week</span><span>Rules</span></div>
+<div style="display:flex;gap:10px;align-items:center"><span class="ssw"></span><span class="ssw off"></span><div class="sprog" style="flex:1"><i style="width:75%"></i></div></div>
+</div>
+<div class="scard sc" style="width:230px">
+<div class="schd"><span class="scti">Card title</span><span class="scde">Card description, one line.</span></div>
+<div class="scct"><div class="sprog"><i style="width:60%"></i></div></div>
+<div class="scft"><span class="sbtn sm">Action</span><span class="sbtn sec sm">Cancel</span></div>
+</div>
+</div>
+<div class="note" style="max-width:780px">shadcn structure (Card→Header/Content/Footer, button variants, badge semantics) with our tokens: SF stack, #007AFF primary, macOS switch, segmented tabs instead of underline tabs.</div>
+</div>
+
+<div class="dv-opt" id="7b">
+<div class="dv-olabel"><a class="dv-oid" href="#7b">7b</a>Popover rebuilt on the kit</div>
+<div class="dv-card"><div class="wall sc" style="width:400px;padding-bottom:20px">
+<div class="hbar"><span class="batt"></span><span class="hpill on"><span class="hg"></span><span class="hcnt">1</span></span><span>Tue 14:02</span></div>
+<div style="display:flex;justify-content:flex-end;padding:6px 10px 0"><div style="width:310px;background:rgba(247,247,249,.92);backdrop-filter:blur(28px);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.24),0 0 0 .5px rgba(0,0,0,.14);padding:10px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px;padding:0 4px"><span class="hdot" style="background:#FF9F0A"></span><span style="font-size:14px;font-weight:600">1 decision</span><span class="sbdg out" style="margin-left:auto"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg> local</span></div>
+<div class="sseg"><span class="on">Today</span><span>Week</span><span>Rules</span></div>
+<div class="scard" style="display:flex;flex-direction:column">
+<div class="schd" style="flex-direction:row;align-items:center;gap:8px;padding:10px 12px 0"><span class="hav" style="background:#3478f6;width:22px;height:22px;font-size:10px;box-shadow:none">A</span><div style="display:flex;flex-direction:column"><span class="scti">12 screenshots → Atlas › Screens</span><div style="display:flex;align-items:center;gap:6px;margin-top:2px"><div class="sprog" style="width:56px"><i style="width:92%;background:#34C759"></i></div><span class="sbtn lnk sm" style="padding:0">why?</span></div></div></div>
+<div class="scft" style="padding:10px 12px 12px"><span class="sbtn sm" style="flex:1">Show me</span><span class="sbtn out sm">Skip</span></div>
+</div>
+<div class="scard">
+<div class="srow" style="padding:8px 12px"><span class="ssub2" style="width:32px">14:02</span><span class="slbl">Filed 3 screenshots</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Atlas</span><span class="sbtn lnk sm" style="padding:0">↩</span></div>
+<div class="srow" style="padding:8px 12px"><span class="ssub2" style="width:32px">11:40</span><span class="slbl">Filed 1 invoice</span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Finance</span><span class="sbtn lnk sm" style="padding:0">↩</span></div>
+</div>
+<span class="ssub2" style="text-align:center">Nothing moves without you</span>
+</div></div>
+</div></div>
+<div class="note" style="max-width:400px">Same content as <a class="dv-oid" href="#5a">5a</a>/<a class="dv-oid" href="#5b">5b</a>, now on kit parts: segmented tabs replace sections, cards separate decision from log, badge carries privacy.</div>
+</div>
+
+<div class="dv-opt" id="7c">
+<div class="dv-olabel"><a class="dv-oid" href="#7c">7c</a>Settings — the missing surface</div>
+<div class="dv-card"><div class="wall sc" style="width:560px;padding:20px">
+<div style="width:520px;margin:0 auto;background:rgba(246,246,248,.97);border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.3),0 0 0 .5px rgba(0,0,0,.15);overflow:hidden">
+<div style="display:flex;align-items:center;gap:6px;padding:10px 12px"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span style="font-size:12.5px;font-weight:600;margin:0 auto;transform:translateX(-22px)">Otto</span></div>
+<div style="display:flex;border-top:.5px solid rgba(0,0,0,.1)">
+<div style="width:130px;padding:10px;background:rgba(0,0,0,.03);border-right:.5px solid rgba(0,0,0,.08);display:flex;flex-direction:column;gap:2px">
+<span style="font-size:12px;padding:4px 8px;border-radius:6px;background:#007AFF;color:#fff;font-weight:500">General</span>
+<span style="font-size:12px;padding:4px 8px;color:var(--fg)">Folders</span>
+<span style="font-size:12px;padding:4px 8px;color:var(--fg)">Rules</span>
+<span style="font-size:12px;padding:4px 8px;color:var(--fg)">History</span>
+</div>
+<div style="flex:1;padding:12px;display:flex;flex-direction:column;gap:10px">
+<div class="scard">
+<div class="srow"><div style="display:flex;flex-direction:column;flex:1"><span class="slbl">Tend quietly</span><span class="ssub2">Only sweep when the Mac is idle</span></div><span class="ssw"></span></div>
+<div class="srow"><div style="display:flex;flex-direction:column;flex:1"><span class="slbl">Weekly note</span><span class="ssub2">Friday, 16:00</span></div><span class="ssw"></span></div>
+<div class="srow"><div style="display:flex;flex-direction:column;flex:1"><span class="slbl">Sounds</span></div><span class="ssw off"></span></div>
+</div>
+<div class="scard">
+<div class="srow"><div style="display:flex;flex-direction:column;flex:1"><span class="slbl">Pause Otto</span><span class="ssub2">Until 5 pm · tomorrow · manually</span></div><span class="sbtn out sm">Pause…</span></div>
+<div class="srow"><div style="display:flex;flex-direction:column;flex:1"><span class="slbl">Everything Otto knows</span><span class="ssub2">Rules, examples, history — on this Mac</span></div><span class="sbtn des sm">Erase</span></div>
+</div>
+</div>
+</div>
+</div>
+</div></div>
+<div class="note" style="max-width:560px">System Settings anatomy (sidebar + grouped rows + trailing controls) built from kit rows/switches. The nuclear "Erase" is visible, not buried — trust by exit.</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "rebuild werkbriefje + first clean on the kit" · "interactive prototype" · "Dutch copy pass"</p>
+</section>
+<section class="dv-turn" id="t6">
+<div class="dv-thd"><a class="dv-tid" href="#t6">6</a><span class="dv-tname">Round 6 — the full state map: every flow, happy &amp; unhappy, on <a class="dv-oid" href="#5d">5d</a> word budgets</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="6a" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#6a">6a</a>Onboarding, distilled — 3 steps</div>
+<div class="dv-card hf" style="padding:16px;display:flex;flex-wrap:wrap;gap:14px;background:#faf9f7">
+<div class="hpop" style="width:250px;min-height:196px;display:flex;flex-direction:column;gap:7px">
+<div class="hrow" style="justify-content:center;gap:5px;margin-bottom:2px"><span style="width:16px;height:6px;border-radius:3px;background:#007AFF"></span><span style="width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)"></span><span style="width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)"></span></div>
+<div style="align-self:center;width:40px;height:40px;border-radius:12px;background:rgba(52,199,89,.14);color:#1d7a3a;display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg></div>
+<span class="htitle" style="text-align:center">Nothing leaves this Mac</span>
+<span class="hsub" style="text-align:center">No account. No cloud. No exceptions.</span>
+<span class="hbtn" style="justify-content:center;margin-top:auto">Continue</span>
+</div>
+<div class="hpop" style="width:250px;min-height:196px;display:flex;flex-direction:column;gap:7px">
+<div class="hrow" style="justify-content:center;gap:5px;margin-bottom:2px"><span style="width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)"></span><span style="width:16px;height:6px;border-radius:3px;background:#007AFF"></span><span style="width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)"></span></div>
+<span class="htitle" style="text-align:center">Where may I work?</span>
+<div class="hcard hrow" style="padding:7px 9px"><span style="width:18px;display:flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="8" rx="1"></rect><path d="M6 13.5h4"></path></svg></span><span class="hlog" style="font-weight:500">Desktop</span><span style="margin-left:auto;color:#007AFF;font-weight:600">✓</span></div>
+<div class="hcard hrow" style="padding:7px 9px"><span style="width:18px;display:flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v5M5.8 8.3 8 10.5l2.2-2.2"></path></svg></span><span class="hlog" style="font-weight:500">Downloads</span><span style="margin-left:auto;color:#007AFF;font-weight:600">✓</span></div>
+<span class="hsub" style="text-align:center">The rest of your Mac stays off-limits.</span>
+<span class="hbtn" style="justify-content:center;margin-top:auto">Allow these 2 folders</span>
+</div>
+<div class="hpop" style="width:250px;min-height:196px;display:flex;flex-direction:column;gap:7px">
+<div class="hrow" style="justify-content:center;gap:5px;margin-bottom:2px"><span style="width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)"></span><span style="width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)"></span><span style="width:16px;height:6px;border-radius:3px;background:#007AFF"></span></div>
+<span class="htitle" style="text-align:center">Your archivist needs a name</span>
+<div class="hrow" style="justify-content:center;flex-wrap:wrap;gap:6px"><span class="hchip" style="background:#007AFF;color:#fff">Otto</span><span class="hchip">Ada</span><span class="hchip">Juno</span><span class="hchip" style="border:1px dashed rgba(0,0,0,.25);background:transparent">own…</span></div>
+<div class="hrow" style="justify-content:center;gap:8px"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #3478f6">O</span><span class="hav" style="background:#2f9e8f;width:20px;height:20px;font-size:9px">O</span><span class="hav" style="background:#8e6bd0;width:20px;height:20px;font-size:9px">O</span><span class="hav" style="background:#c77d4a;width:20px;height:20px;font-size:9px">O</span></div>
+<div class="hcard hrow" style="padding:6px 9px"><span class="hsub">Signs his work as</span><span class="ctag" style="margin-left:auto">Otto</span></div>
+<div class="hrow" style="margin-top:auto"><span class="hbtn" style="flex:1;justify-content:center">Meet Otto</span><span class="hbtn sec">Skip</span></div>
+</div>
+</div>
+<div class="note" style="max-width:780px">Page-control stepper (Apple dots) = progressive disclosure with a visible end. Each card: one idea, centered rhythm, primary action pinned to the bottom. Button copy states exact scope ("Allow these 2 folders").</div>
+</div>
+
+<div class="dv-opt" id="6b" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#6b">6b</a>Daily states ×6 — icon + popover header pairs</div>
+<div class="dv-card hf" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:14px;background:#faf9f7">
+<div class="hcol"><div class="hbar" style="border-radius:8px"><span class="hpill on"><span class="hg"></span></span><span>14:02</span></div><div class="hpop" style="width:auto;margin-top:6px"><div class="hrow"><span class="hdot" style="background:#34C759"></span><span class="htitle">All tidy</span></div></div><span class="note" style="margin-top:6px">quiet — the default 95% of the time</span></div>
+<div class="hcol"><div class="hbar" style="border-radius:8px"><span class="hpill on"><span class="hg"></span><span class="hbd pulse" style="background:#007AFF"></span></span><span>14:02</span></div><div class="hpop" style="width:auto;margin-top:6px"><div class="hrow"><span class="hdot pulse" style="background:#007AFF"></span><span class="htitle">Sorting 3 in Downloads</span></div></div><span class="note" style="margin-top:6px">working — dot pulses, nothing else moves</span></div>
+<div class="hcol"><div class="hbar" style="border-radius:8px"><span class="hpill on"><span class="hg"></span><span class="hcnt">2</span></span><span>14:02</span></div><div class="hpop" style="width:auto;margin-top:6px"><div class="hrow"><span class="hdot" style="background:#FF9F0A"></span><span class="htitle">2 decisions</span></div></div><span class="note" style="margin-top:6px">needs you — amber count, never a notification</span></div>
+<div class="hcol"><div class="hbar" style="border-radius:8px"><span class="hpill on" style="opacity:.4"><span class="hg"></span></span><span>14:02</span></div><div class="hpop" style="width:auto;margin-top:6px"><div class="hrow"><span class="hdot" style="background:rgba(0,0,0,.25)"></span><span class="htitle">Paused until 5 pm</span><span class="hlink" style="margin-left:auto">Resume</span></div></div><span class="note" style="margin-top:6px">snoozed — dimmed, one-tap resume</span></div>
+<div class="hcol"><div class="hbar" style="border-radius:8px"><span class="hpill on"><span class="hg"></span><span class="hbd" style="background:#FF3B30"></span></span><span>14:02</span></div><div class="hpop" style="width:auto;margin-top:6px"><div class="hrow"><span class="hdot" style="background:#FF3B30"></span><span class="htitle">Lost access to Downloads</span></div><span class="hbtn" style="justify-content:center;margin-top:6px">Re-allow</span></div><span class="note" style="margin-top:6px">blocked — red only for broken, never for busy</span></div>
+<div class="hcol"><div class="hbar" style="border-radius:8px"><span class="hpill on"><span class="hg"></span></span><span>14:02</span></div><div class="hpop" style="width:auto;margin-top:6px"><div class="hrow"><span class="hdot" style="background:#34C759"></span><span class="htitle">Quiet week — nothing to do</span></div></div><span class="note" style="margin-top:6px">empty state = a win, said in 5 words</span></div>
+</div>
+<div class="note" style="max-width:780px">Color = one meaning each: green tidy, blue working, amber waiting, grey paused, red broken. Icon and popover always agree (mapping).</div>
+</div>
+
+<div class="dv-opt" id="6c" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#6c">6c</a>Decision outcomes — approve · correct · skip</div>
+<div class="dv-card hf" style="padding:16px;display:flex;flex-wrap:wrap;gap:14px;background:#faf9f7">
+<div class="c" style="width:250px">
+<div class="hpop" style="width:250px;display:flex;flex-direction:column;gap:6px"><div class="hrow"><span class="hdot" style="background:#34C759"></span><span class="hlog" style="font-weight:600">Filed 12 → Atlas</span><span class="hlink" style="margin-left:auto">↩</span></div><div class="hrow" style="margin-top:4px;gap:5px"><span style="width:56px;height:3px;border-radius:2px;background:linear-gradient(90deg,#007AFF 83%,rgba(0,0,0,.1) 83%)"></span><span class="hsub">10/12 to auto</span></div></div>
+<span class="note">approved — receipt + ring tick up</span>
+</div>
+<div class="c" style="width:270px">
+<div class="hpop" style="width:270px;display:flex;flex-direction:column;gap:6px">
+<span class="htitle" style="font-size:13px">Where instead?</span>
+<div class="hrow" style="margin-top:4px"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px">A</span><span class="hlog">Atlas › <b>Refs</b></span><span class="hsub" style="margin-left:auto">his 2nd guess</span></div>
+<div class="hrow"><span class="hav" style="background:#8e6bd0;width:20px;height:20px;font-size:9px">Q</span><span class="hlog">Q3 deck</span></div>
+<div class="hrow"><span style="width:20px;display:inline-flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg></span><span class="hlog">Somewhere else…</span></div>
+<div class="hrow"><span style="width:20px;display:inline-flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M5.5 8h5"></path></svg></span><span class="hlog">Leave them where they are</span></div>
+<div class="hsub" style="margin-top:6px">I'll remember this.</div>
+</div>
+<span class="note">"Not quite…" — correction teaches; recognition list, not a folder picker</span>
+</div>
+<div class="c" style="width:250px">
+<div class="hpop" style="width:250px;display:flex;flex-direction:column;gap:6px"><div class="hrow"><span style="width:20px;display:inline-flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.3 1.4"></path></svg></span><span class="hlog" style="font-weight:600">Parked — 4 files</span><span class="hsub" style="margin-left:auto">asks again Fri</span></div><div class="hsub" style="margin-top:4px">Skipped twice → I stop asking.</div></div>
+<span class="note">skipped — parked visibly, self-muting (no nag loop)</span>
+</div>
+</div>
+<div class="note" style="max-width:780px">Every exit is honest: approval feeds the ring, correction feeds the model, skipping decays to silence.</div>
+</div>
+
+<div class="dv-opt" id="6d" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#6d">6d</a>Repair — the unhappy paths that build trust</div>
+<div class="dv-card hf" style="padding:16px;display:flex;flex-wrap:wrap;gap:14px;background:#faf9f7">
+<div class="c" style="width:260px">
+<div class="hpop" style="width:260px"><div class="hrow"><span style="font-size:14px">↩</span><span class="hlog" style="font-weight:600">12 back on Desktop</span><span class="hchip" style="margin-left:auto;background:rgba(52,199,89,.15);color:#1d7a3a">done</span></div><div class="hrow" style="margin-top:6px"><span class="hsub">Stop filing screenshots?</span><span class="hlink" style="margin-left:auto">Yes</span><span class="hlink">Just this once</span></div></div>
+<span class="note">undo — instant, then ONE question, then silence</span>
+</div>
+<div class="c" style="width:260px">
+<div class="hpop" style="width:260px"><div class="hrow"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px">O</span><span class="hlog" style="font-weight:600">Noticed — you moved it back</span></div><div class="hsub" style="margin-top:4px">invoice_q3 stays in Downloads. Rule updated.</div><div class="hrow" style="margin-top:4px;gap:5px"><span style="width:56px;height:3px;border-radius:2px;background:linear-gradient(90deg,#FF9F0A 58%,rgba(0,0,0,.1) 58%)"></span><span class="hsub">confidence ↓</span></div></div>
+<span class="note">silent correction in Finder — Otto sees it, adapts, says so once</span>
+</div>
+<div class="c" style="width:260px">
+<div class="hpop" style="width:260px"><div class="hrow"><span class="hdot" style="background:#FF9F0A"></span><span class="hlog" style="font-weight:600">I got 2 wrong this week</span></div><div class="hsub" style="margin-top:4px">Screenshots: back to asking first.</div><div class="hrow" style="margin-top:6px"><span class="hchip">auto → asks</span><span class="hlink" style="margin-left:auto">See the 2</span></div></div>
+<span class="note">self-demotion — the rule steps DOWN the ladder on its own</span>
+</div>
+<div class="c" style="width:260px">
+<div class="hpop" style="width:260px"><div class="hrow"><span class="hdot" style="background:#FF3B30"></span><span class="hlog" style="font-weight:600">Atlas folder is gone</span></div><div class="hsub" style="margin-top:4px">Renamed or deleted — 3 moves on hold.</div><div class="hrow" style="margin-top:6px"><span class="hbtn sec" style="font-size:11.5px">It moved — show me where</span><span class="hlink" style="margin-left:auto">Forget Atlas</span></div></div>
+<span class="note">broken destination — holds work, asks once, offers a clean forget</span>
+</div>
+</div>
+<div class="note" style="max-width:780px">Norman: errors are the system's fault, recovery is one tap, and every repair updates the model — visibly (confidence bar, ladder demotion).</div>
+</div>
+
+<div class="dv-opt" id="6e" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#6e">6e</a>Money moments — trial end, both answers</div>
+<div class="dv-card hf" style="padding:16px;display:flex;flex-wrap:wrap;gap:14px;background:#faf9f7">
+<div class="c" style="width:280px">
+<div class="hpop" style="width:280px;display:flex;flex-direction:column;gap:6px">
+<span class="htitle">30 days with Otto</span>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+<div class="hcol" style="gap:0"><span style="font-size:20px;font-weight:700">312</span><span class="hsub">files filed</span></div>
+<div class="hcol" style="gap:0"><span style="font-size:20px;font-weight:700">≈3<span style="font-size:12px;font-weight:500">h</span></span><span class="hsub">saved</span></div>
+</div>
+<div class="hrow" style="margin-top:8px"><span class="hbtn" style="flex:1;justify-content:center">Keep Otto — €3/mo</span></div>
+<div class="hrow" style="justify-content:center"><span class="hlink" style="font-size:11.5px">Not now</span></div>
+</div>
+<span class="note">the ask — his numbers make the case, no countdown, no red</span>
+</div>
+<div class="c" style="width:280px">
+<div class="hpop" style="width:280px;display:flex;flex-direction:column;gap:6px">
+<div class="hrow"><span class="hdot" style="background:rgba(0,0,0,.25)"></span><span class="htitle">Otto is resting</span></div>
+<div class="hsub" style="margin-top:4px">Still watching, no longer filing. Your rules and undo history are safe.</div>
+<div class="hrow" style="margin-top:6px"><span class="hbtn sec" style="flex:1;justify-content:center">Wake him up</span></div>
+</div>
+<span class="note">declined — graceful, nothing deleted, door stays open (endowment: he's still *your* Otto)</span>
+</div>
+</div>
+<div class="note" style="max-width:780px">Loss aversion works by itself — 312 filed files speak; we never threaten mess.</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "interactive prototype of the whole popover" · "animate <a class="dv-oid" href="#3b">3b</a>" · "Dutch copy pass" · "settings surface"</p>
+</section>
+<section class="dv-turn" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">Round 5 — the distillation pass: Norman + behavioral principles, word budgets enforced</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="5a">
+<div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Home, distilled — 9 words visible</div>
+<div class="dv-card"><div class="wall hf" style="width:400px;padding-bottom:20px">
+<div class="hbar"><span class="batt"></span><span class="hpill on"><span class="hg"></span></span><span>Tue 14:02</span></div>
+<div style="display:flex;justify-content:flex-end;padding:6px 10px 0"><div class="hpop" style="width:290px">
+<div class="hrow"><span class="hdot" style="background:#34C759"></span><span class="htitle">All tidy</span><span class="hchip" style="margin-left:auto" title="Everything stays on this Mac"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg> local</span></div>
+<div class="hsep"></div>
+<div class="hrow"><span class="hav" style="background:#3478f6">A</span><span class="hav" style="background:#2f9e8f;margin-left:-7px">F</span><span class="hav" style="background:#8e6bd0;margin-left:-7px">Q</span><span class="hav" style="background:rgba(120,120,128,.25);color:#3c3c43;margin-left:-7px">+3</span><span class="hsub" style="margin-left:auto">6 projects ›</span></div>
+<div class="hsep"></div>
+<div class="hcol" style="gap:5px">
+<div class="hrow"><span class="hsub" style="width:34px">14:02</span><span class="hlog">3 → <b>Atlas</b></span><span class="hlink" style="margin-left:auto">↩</span></div>
+<div class="hrow"><span class="hsub" style="width:34px">11:40</span><span class="hlog">1 → <b>Finance</b></span><span class="hlink" style="margin-left:auto">↩</span></div>
+</div>
+</div></div>
+</div></div>
+<div class="note" style="max-width:400px"><b>Recognition over recall:</b> avatars + counts, no sentences. Privacy = one lock chip (hover for words). Undo = ↩ on every row — the signifier IS the promise. Was 24 words (<a class="dv-oid" href="#2a">2a</a>), now 9.</div>
+</div>
+
+<div class="dv-opt" id="5b">
+<div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Decision card, distilled — reason on demand</div>
+<div class="dv-card"><div class="wall hf" style="width:400px;padding:16px">
+<div class="hpop" style="width:300px;margin:0 auto">
+<div class="hrow"><span class="hdot" style="background:#FF9F0A"></span><span class="htitle">1 decision</span></div>
+<div class="hsep"></div>
+<div class="hcard hcol" style="gap:8px">
+<div class="hrow"><span class="hav" style="background:#3478f6">A</span><div class="hcol" style="gap:2px"><span class="hlog" style="font-weight:600">12 screenshots → <b>Atlas › Screens</b></span><div class="hrow" style="gap:5px"><span style="width:56px;height:3px;border-radius:2px;background:linear-gradient(90deg,#34C759 92%,rgba(0,0,0,.1) 92%)"></span><span class="hlink" style="font-size:11px">why?</span></div></div></div>
+<div class="hrow"><span class="hbtn" style="flex:1;justify-content:center">Show me</span><span class="hbtn sec">↩ Skip</span></div>
+</div>
+<div class="hsub" style="margin-top:8px;text-align:center">Nothing moves without you</div>
+</div>
+</div></div>
+<div class="note" style="max-width:400px"><b>Progressive disclosure:</b> the reason sentence lives behind "why?". Confidence = a bar, not "92% sure". One primary action (default bias) — "Show me" is the safe, curious choice. Was 31 words (<a class="dv-oid" href="#3a">3a</a>), now 8.</div>
+</div>
+
+<div class="dv-opt" id="5c">
+<div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a>Rule progress — goal gradient, not prose</div>
+<div class="dv-card"><div class="wall hf" style="width:400px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<div class="hcard hrow" style="gap:10px">
+<div style="position:relative;width:34px;height:34px;flex:none"><svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="3"></circle><circle cx="17" cy="17" r="14" fill="none" stroke="#007AFF" stroke-width="3" stroke-linecap="round" stroke-dasharray="66 88" transform="rotate(-90 17 17)"></circle></svg><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700">9/12</span></div>
+<div class="hcol" style="gap:1px"><span class="hlog" style="font-weight:600">Screenshots → Atlas</span><span class="hsub">3 accepts from a rule</span></div>
+<span class="hchip" style="margin-left:auto">asks</span>
+</div>
+<div class="hcard hrow" style="gap:10px">
+<div style="position:relative;width:34px;height:34px;flex:none"><svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14" fill="none" stroke="#34C759" stroke-width="3"></circle></svg><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#34C759">✓</span></div>
+<div class="hcol" style="gap:1px"><span class="hlog" style="font-weight:600">Installers → Archive</span><span class="hsub">rule active · 41 filed</span></div>
+<span class="hchip" style="margin-left:auto;background:rgba(52,199,89,.15);color:#1d7a3a">auto</span>
+</div>
+<div class="hcard hrow" style="gap:10px">
+<div style="position:relative;width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg></div>
+<div class="hcol" style="gap:1px"><span class="hlog" style="font-weight:600">Sensitive files</span><span class="hsub">always asks — by design</span></div>
+</div>
+</div></div>
+<div class="note" style="max-width:400px"><b>Goal gradient:</b> 9/12 ring makes the next accept feel like progress, replacing 4c's P.S. sentence. <b>Mapping:</b> each row = one rule, state readable from the ring alone. Locked row keeps the boundary visible.</div>
+</div>
+
+<div class="dv-opt" id="5d">
+<div class="dv-olabel"><a class="dv-oid" href="#5d">5d</a>The copy system — word budgets</div>
+<div class="dv-card" style="padding:16px;background:#faf9f7"><div class="c" style="max-width:400px">
+<div class="r"><span class="chip" style="background:#2b2a27;color:#fff;border-color:#2b2a27">rule</span><span class="h">Numbers beat sentences</span></div>
+<div class="note" style="padding-left:44px">"86" + label, never "You filed 86 files this week"</div>
+<div class="r"><span class="chip" style="background:#2b2a27;color:#fff;border-color:#2b2a27">rule</span><span class="h">Reasons on demand</span></div>
+<div class="note" style="padding-left:44px">every "why" sits behind a tap; trust the disclosure</div>
+<div class="r"><span class="chip" style="background:#2b2a27;color:#fff;border-color:#2b2a27">rule</span><span class="h">One sentence per surface</span></div>
+<div class="note" style="padding-left:44px">the only full sentence allowed = the reassurance line ("Nothing moves without you")</div>
+<div class="r"><span class="chip" style="background:#2b2a27;color:#fff;border-color:#2b2a27">rule</span><span class="h">Otto speaks in receipts</span></div>
+<div class="note" style="padding-left:44px">verb + count + destination: "Filed 12 → Atlas". Personality lives in questions, not status.</div>
+</div></div>
+<div class="note" style="max-width:400px">The enforcement layer — apply to every earlier screen before hi-fi build.</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "retrofit <a class="dv-oid" href="#5d">5d</a> onto the werkbriefje + first clean" · "animate <a class="dv-oid" href="#3b">3b</a>" · "Dutch copy pass"</p>
+</section>
+<section class="dv-turn" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Round 4 — name your archivist: personalization &amp; the IKEA effect</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a">
+<div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>The naming moment — end of onboarding</div>
+<div class="dv-card"><div class="wall hf" style="width:420px;padding:24px">
+<div class="hpop" style="margin:0 auto;width:340px">
+<span class="htitle">One last thing — give me a name?</span>
+<div class="hsub" style="margin-top:2px">Optional. I'll sign my work with it.</div>
+<div class="hrow" style="margin-top:10px;flex-wrap:wrap;gap:6px"><span class="hchip" style="background:#007AFF;color:#fff">Otto</span><span class="hchip">Ada</span><span class="hchip">Juno</span><span class="hchip">Miep</span><span class="hchip" style="border:1px dashed rgba(0,0,0,.25);background:transparent">type your own…</span></div>
+<div class="hhd" style="margin-top:12px">AND A COLOR</div>
+<div class="hrow" style="margin-top:6px"><span class="hav" style="background:#3478f6;box-shadow:0 0 0 2px #fff,0 0 0 4px #3478f6">O</span><span class="hav" style="background:#2f9e8f">O</span><span class="hav" style="background:#8e6bd0">O</span><span class="hav" style="background:#c77d4a">O</span><span class="hav" style="background:#5a5a5e">O</span></div>
+<div class="hsep"></div>
+<div class="hhd">HOW THAT LOOKS</div>
+<div class="hrow" style="margin-top:7px;background:rgba(255,255,255,.7);border-radius:8px;padding:7px 9px"><span class="hpill on" style="height:20px"><span class="hg"></span></span><span class="hsub">quiet in your menubar —</span><span class="ctag" style="margin-left:auto">Otto</span><span class="hsub">only in previews</span></div>
+<div class="hrow" style="margin-top:10px"><span class="hbtn" style="flex:1;justify-content:center">Meet Otto</span><span class="hbtn sec">Skip</span></div>
+<div class="hsub" style="margin-top:6px;text-align:center">Skipping is fine — I'll go by "Archivist".</div>
+</div>
+</div></div>
+<div class="note" style="max-width:420px">Naming = a 10-second investment that makes it *yours* (IKEA effect), placed after value is proven, never blocking. The menubar glyph stays neutral — the name lives in previews, receipts and copy, so it's personal without becoming a cartoon mascot.</div>
+</div>
+
+<div class="dv-opt" id="4b">
+<div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>The name threads through everything</div>
+<div class="dv-card"><div class="wall hf" style="width:420px;padding:18px;display:flex;flex-direction:column;gap:10px">
+<div class="hcard hrow"><div style="display:flex;align-items:flex-start"><span class="cur" style="border-left-width:10px;border-bottom-width:11px"></span><span class="ctag" style="margin:12px 0 0 -4px">Otto</span></div><span class="hsub" style="margin-left:10px">the collaborator cursor in previews (<a class="dv-oid" href="#3b" style="color:#007AFF">3b</a>)</span></div>
+<div class="hcard hrow"><span class="hav" style="background:#3478f6;width:22px;height:22px;font-size:10px">O</span><div class="hcol" style="gap:0"><span class="hlog" style="font-weight:600">Otto — in Downloads right now</span><span class="hsub">popover header, working state (<a class="dv-oid" href="#2c" style="color:#007AFF">2c</a>)</span></div></div>
+<div class="hcard hrow"><span class="hsub" style="width:34px">14:02</span><div class="hcol" style="gap:0"><span class="hlog">Otto filed 3 screenshots → Atlas › Screens</span><span class="hsub">the log speaks in first person… of a third party</span></div><span class="hlink" style="margin-left:auto">Undo</span></div>
+<div class="hcard hrow"><span class="hlog" style="font-style:italic">"I think this belongs with Project Atlas — am I right?"</span><span class="hsub" style="margin-left:auto;white-space:nowrap">— Otto</span></div>
+</div></div>
+<div class="note" style="max-width:420px">One name, four touchpoints: cursor tag, presence header, action log, humble questions. Copy rule: Otto talks about *his* work, never about *you* ("Otto filed…", not "We organized your life!").</div>
+</div>
+
+<div class="dv-opt" id="4c">
+<div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a>The werkbriefje becomes a note from Otto</div>
+<div class="dv-card"><div class="wall hf" style="width:440px;padding:24px">
+<div style="width:360px;margin:0 auto;background:rgba(252,251,248,.97);border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.12);padding:16px">
+<div class="hrow"><span class="hav" style="background:#3478f6">O</span><div class="hcol" style="gap:0"><span class="htitle" style="font-size:14px">Your week, from Otto</span><span class="hsub">Mon 13 – Sun 19 Jul</span></div></div>
+<div class="hsep" style="margin:12px -16px"></div>
+<div class="hcol" style="gap:7px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="hcol" style="gap:1px"><span style="font-size:22px;font-weight:700">86</span><span class="hsub">files filed</span></div>
+<div class="hcol" style="gap:1px"><span style="font-size:22px;font-weight:700">7</span><span class="hsub">projects tended</span></div>
+<div class="hcol" style="gap:1px"><span style="font-size:22px;font-weight:700">6<span style="font-size:13px;font-weight:500;color:rgba(60,60,67,.6)">/7</span></span><span class="hsub">days Desktop clear</span></div>
+<div class="hcol" style="gap:1px"><span style="font-size:22px;font-weight:700">≈47<span style="font-size:13px;font-weight:500;color:rgba(60,60,67,.6)">m</span></span><span class="hsub">saved · my estimate</span></div>
+</div>
+<div class="hrow" style="margin-top:4px;background:rgba(0,0,0,.03);border-radius:8px;padding:7px 10px"><span class="hlog"><b>4 files</b> set aside for you</span><span class="hlink" style="margin-left:auto">Review</span></div>
+</div>
+<div class="hsep" style="margin:12px -16px"></div>
+<div class="hsub" style="font-style:italic">P.S. You've accepted "screenshots → Atlas" 9 times now. Three more and I'll offer to handle those myself.</div>
+<div class="hrow" style="margin-top:10px"><span class="hsub">— Otto, your archivist</span><span class="hchip" style="margin-left:auto">every move undoable</span></div>
+</div>
+</div></div>
+<div class="note" style="max-width:440px">The weekly receipt reads like a note from someone who works for you — honest numbers, labeled estimates, one humble P.S. that advances the trust ladder. This is where the subscription earns its renewal.</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "explore avatar styles beyond monograms" · "fold naming into the journey (<a class="dv-oid" href="#1a">1a</a>)" · "animate <a class="dv-oid" href="#3b">3b</a> live" · "Dutch copy pass"</p>
+</section>
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Round 3 — show, don't ask: preview the moves in Finder (riff on <a class="dv-oid" href="#2b">2b</a>)</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Decision card v2 — "Show me" before "File them"</div>
+<div class="dv-card"><div class="wall hf" style="width:420px;padding-bottom:20px">
+<div class="hbar"><span class="batt"></span><span class="hpill on"><span class="hg"></span><span class="hcnt">1</span></span><span>Tue 14:02</span></div>
+<div style="display:flex;justify-content:flex-end;padding:6px 10px 0"><div class="hpop">
+<div class="hrow"><span class="hdot" style="background:#FF9F0A"></span><span class="htitle">1 decision waiting</span></div>
+<div class="hsep"></div>
+<div class="hcard hcol" style="gap:6px">
+<div class="hrow"><span class="hav" style="background:#3478f6">A</span><div class="hcol" style="gap:1px"><span class="hlog" style="font-weight:600">12 screenshots → Atlas › Screens</span><span class="hsub">Filenames match "atlas-*", saved while you worked on Atlas.</span></div></div>
+<div class="hrow"><span class="hbtn">Show me how</span><span class="hbtn sec">File them</span><span class="hlink" style="margin-left:auto;font-size:11.5px">Skip</span></div>
+</div>
+<div class="hcol" style="border:1.5px dashed rgba(0,122,255,.5);border-radius:10px;padding:9px;gap:7px;background:rgba(0,122,255,.04)">
+<div class="hrow"><span class="hdot pulse" style="background:#007AFF"></span><span class="hsub" style="color:#007AFF;font-weight:600">Preview — nothing moves yet</span><span class="hlink" style="margin-left:auto;font-size:11.5px">Open in Finder ↗</span></div>
+<div class="hrow" style="gap:8px"><span class="hsub" style="flex:1">Desktop</span><span style="color:#007AFF;font-size:15px">→</span><span class="fchip gho" style="color:#0062cc;flex:1;justify-content:center">Atlas › Screens</span></div>
+<div class="hrow"><span class="hbtn" style="flex:1;justify-content:center">Looks right — file them</span><span class="hbtn sec">Not quite…</span></div>
+</div>
+</div></div>
+</div></div>
+<div class="note" style="max-width:420px">Consent becomes two steps: propose → demonstrate → approve. "File them" stays for pros who trust it already; small batches get this inline diff, "Open in Finder" escalates to <a class="dv-oid" href="#3b">3b</a>.</div>
+</div>
+
+<div class="dv-opt" id="3b" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>The collaborator moment — ghost preview in Finder</div>
+<div class="dv-card" style="max-width:780px"><div class="wall hf" style="width:780px;max-width:100%;height:430px;padding:0">
+<div style="position:absolute;top:12px;left:50%;transform:translateX(-50%)" class="dbar"><span class="hdot pulse" style="background:#4da3ff"></span><span style="font-size:12px">Preview — nothing has moved yet</span><span style="font-size:11px;opacity:.6">esc to exit</span></div>
+<div class="hcol" style="position:absolute;left:22px;top:64px;gap:12px">
+<span class="hchip" style="background:rgba(255,255,255,.4);backdrop-filter:blur(8px)">Desktop</span>
+<div style="display:grid;grid-template-columns:repeat(2,62px);gap:12px">
+<div class="dico" style="opacity:.4"><span class="fic"></span><span class="dlab">atlas-flow-v2</span></div>
+<div class="dico"><span class="fic"></span><span class="dlab">notes.txt</span></div>
+<div class="dico" style="opacity:.4"><span class="fic"></span><span class="dlab">atlas-board</span></div>
+<div class="dico" style="opacity:.4"><span class="fic"></span><span class="dlab">Screenshot 07…</span></div>
+</div>
+</div>
+<div style="position:absolute;left:200px;top:150px;width:180px;border-top:2px dashed rgba(0,122,255,.6);transform:rotate(14deg)"></div>
+<div style="position:absolute;left:296px;top:112px;z-index:5;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
+<span class="fic gho" style="transform:rotate(-6deg)"></span>
+<div style="display:flex;align-items:flex-start;margin-left:18px"><span class="cur"></span><span class="ctag" style="margin:14px 0 0 -4px">Archivist</span></div>
+</div>
+<div style="position:absolute;right:18px;bottom:64px;width:470px;background:rgba(246,246,248,.97);border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.3),0 0 0 .5px rgba(0,0,0,.15);overflow:hidden">
+<div class="hrow" style="padding:9px 12px"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span style="font-size:12.5px;font-weight:600;margin:0 auto;transform:translateX(-22px)">Screens</span></div>
+<div style="display:flex;border-top:.5px solid rgba(0,0,0,.1)">
+<div class="hcol" style="width:118px;padding:9px;background:rgba(0,0,0,.03);border-right:.5px solid rgba(0,0,0,.08);gap:2px">
+<span class="hhd">FAVORITES</span>
+<span class="hsub" style="padding:2px 5px">Desktop</span>
+<span class="hsub" style="padding:2px 5px">Downloads</span>
+<span class="hhd" style="margin-top:6px">PROJECTS</span>
+<span class="hsub" style="padding:2px 5px">Atlas</span>
+<span style="font-size:11.5px;background:#007AFF;color:#fff;border-radius:5px;padding:2px 5px 2px 12px">Screens</span>
+<span class="hsub" style="padding:2px 5px">Finance</span>
+</div>
+<div style="flex:1;padding:12px;display:grid;grid-template-columns:repeat(4,62px);gap:12px;align-content:start">
+<div class="dico"><span class="fic"></span><span class="dlab" style="color:#1d1d1f;text-shadow:none">screens-jun</span></div>
+<div class="dico"><span class="fic"></span><span class="dlab" style="color:#1d1d1f;text-shadow:none">flow-v1</span></div>
+<div class="dico"><span class="fic gho"></span><span class="dlab" style="color:#007AFF;text-shadow:none">atlas-flow-v2</span></div>
+<div class="dico"><span class="fic gho"></span><span class="dlab" style="color:#007AFF;text-shadow:none">atlas-board</span></div>
+<div class="dico"><span class="fic gho"></span><span class="dlab" style="color:#007AFF;text-shadow:none">+ 10 more</span></div>
+</div>
+</div>
+</div>
+<div style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%)" class="dbar"><span style="font-size:12px">12 screenshots → Atlas › Screens</span><span class="hbtn sec" style="background:rgba(255,255,255,.16);color:#fff">Not quite…</span><span class="hbtn">Looks right</span></div>
+</div></div>
+<div class="note" style="max-width:780px">The Figma-collaborator pattern, literal: a named agent cursor carries ghost files from Desktop into the folder. Sources dim, destinations show dashed ghosts — clearly not-yet-real. Esc always exits; the dark bars frame it as a mode, like Figma's follow banner.</div>
+</div>
+
+<div class="dv-opt" id="3c">
+<div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>After approval — it settles quietly</div>
+<div class="dv-card"><div class="wall hf" style="width:500px;padding:20px">
+<div class="hcard" style="position:absolute;top:14px;right:14px;display:flex;align-items:center;gap:8px;padding:8px 11px;background:rgba(255,255,255,.92)"><span class="hdot" style="background:#34C759"></span><div class="hcol" style="gap:0"><span class="hlog" style="font-weight:600">12 filed</span><span class="hsub">3 more accepts and I'll offer this as a rule</span></div><span class="hlink" style="margin-left:6px">Undo all</span></div>
+<div style="width:400px;margin:52px auto 0;background:rgba(246,246,248,.97);border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.28),0 0 0 .5px rgba(0,0,0,.15);overflow:hidden">
+<div class="hrow" style="padding:9px 12px"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span style="font-size:12.5px;font-weight:600;margin:0 auto;transform:translateX(-22px)">Screens</span></div>
+<div style="padding:12px;display:grid;grid-template-columns:repeat(4,62px);gap:12px;border-top:.5px solid rgba(0,0,0,.1)">
+<div class="dico"><span class="fic"></span><span class="dlab" style="color:#1d1d1f;text-shadow:none">screens-jun</span></div>
+<div class="dico"><span class="fic"></span><span class="dlab" style="color:#1d1d1f;text-shadow:none">flow-v1</span></div>
+<div class="dico"><span class="fic" style="box-shadow:0 0 0 2px rgba(0,122,255,.45)"></span><span class="dlab" style="color:#1d1d1f;text-shadow:none">atlas-flow-v2</span></div>
+<div class="dico"><span class="fic" style="box-shadow:0 0 0 2px rgba(0,122,255,.45)"></span><span class="dlab" style="color:#1d1d1f;text-shadow:none">atlas-board</span></div>
+</div>
+</div>
+</div></div>
+<div class="note" style="max-width:500px">Ghosts become real with a brief blue ring that fades. No fanfare — just a small receipt with Undo and honest rule progress (ties to <a class="dv-oid" href="#1h">1h</a>).</div>
+</div>
+
+<div class="dv-opt" id="3d">
+<div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a>The consent loop</div>
+<div class="dv-card" style="padding:16px;background:#faf9f7">
+<div class="r" style="align-items:stretch;gap:10px">
+<div class="frame" style="width:130px"><div class="h">1 · Propose</div><div class="note">card in the popover, reason + confidence</div></div>
+<span class="note" style="align-self:center">→</span>
+<div class="frame" style="width:130px;border-color:#2a78d6"><div class="h" style="color:#2a78d6">2 · Demonstrate</div><div class="note">ghost preview in Finder, agent cursor</div></div>
+<span class="note" style="align-self:center">→</span>
+<div class="frame" style="width:130px"><div class="h">3 · Approve</div><div class="note">one click — or Esc, nothing happened</div></div>
+<span class="note" style="align-self:center">→</span>
+<div class="frame" style="width:130px"><div class="h">4 · Settle + learn</div><div class="note">undo receipt, rule progress +1</div></div>
+</div>
+<div class="note" style="margin-top:10px">Same loop at every autonomy level — higher levels just skip step 3 for earned categories, and the receipt (<a class="dv-oid" href="#3c">3c</a>) becomes the audit trail.</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "animate <a class="dv-oid" href="#3b">3b</a> as a live prototype" · "apply show-don't-ask to the first clean (<a class="dv-oid" href="#2e">2e</a>)" · "Dutch copy pass"</p>
+</section>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Round 2 — hi-fi: <a class="dv-oid" href="#1b">1b</a> status skeleton + <a class="dv-oid" href="#1d">1d</a> presence + <a class="dv-oid" href="#1c">1c</a> decisions</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Home state — all tidy</div>
+<div class="dv-card"><div class="wall hf" style="width:420px;padding-bottom:20px">
+<div class="hbar"><span style="width:13px;height:10px;border:1.5px solid rgba(29,29,31,.6);border-radius:3px"></span><span class="batt"></span><span class="hpill on"><span class="hg"></span></span><span>Tue 21 Jul 14:02</span></div>
+<div style="display:flex;justify-content:flex-end;padding:6px 10px 0"><div class="hpop">
+<div class="hrow"><span class="hdot" style="background:#34C759"></span><span class="htitle">All tidy</span><span class="hchip" style="margin-left:auto">on this Mac only</span></div>
+<div class="hsub" style="margin-top:2px">Watching Desktop &amp; Downloads, quietly.</div>
+<div class="hsep"></div>
+<div class="hhd">PROJECTS I TEND</div>
+<div class="hrow" style="margin-top:7px"><span class="hav" style="background:#3478f6">A</span><span class="hav" style="background:#2f9e8f;margin-left:-7px">F</span><span class="hav" style="background:#8e6bd0;margin-left:-7px">Q</span><span class="hav" style="background:#c77d4a;margin-left:-7px">P</span><span class="hav" style="background:rgba(120,120,128,.25);color:#3c3c43;margin-left:-7px">+2</span><span class="hsub" style="margin-left:8px">6 destinations learned</span></div>
+<div class="hsep"></div>
+<div class="hhd">TODAY</div>
+<div class="hcol" style="margin-top:6px;gap:5px">
+<div class="hrow"><span class="hsub" style="width:34px">14:02</span><span class="hlog">3 screenshots → Atlas › Screens</span><span class="hlink" style="margin-left:auto">Undo</span></div>
+<div class="hrow"><span class="hsub" style="width:34px">11:40</span><span class="hlog">invoice_q3.pdf → Finance › 2026</span><span class="hlink" style="margin-left:auto">Undo</span></div>
+</div>
+<div class="hsep"></div>
+<div class="hrow"><span class="hsub">Every move undoable</span><span class="hchip" style="margin-left:auto">···</span></div>
+</div></div>
+</div></div>
+<div class="note" style="max-width:420px">Green dot = calm. Privacy is a permanent header chip, not a setting buried away. Avatar stack overlaps like collaborators.</div>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Needs you — decisions in the popover</div>
+<div class="dv-card"><div class="wall hf" style="width:420px;padding-bottom:20px">
+<div class="hbar"><span style="width:13px;height:10px;border:1.5px solid rgba(29,29,31,.6);border-radius:3px"></span><span class="batt"></span><span class="hpill on"><span class="hg"></span><span class="hcnt">3</span></span><span>Tue 21 Jul 14:02</span></div>
+<div style="display:flex;justify-content:flex-end;padding:6px 10px 0"><div class="hpop">
+<div class="hrow"><span class="hdot" style="background:#FF9F0A"></span><span class="htitle">3 decisions waiting</span></div>
+<div class="hsub" style="margin-top:2px">No rush — nothing moves without you.</div>
+<div class="hsep"></div>
+<div class="hcol" style="gap:8px">
+<div class="hcard hcol" style="gap:6px">
+<div class="hrow"><span class="hav" style="background:#3478f6">A</span><div class="hcol" style="gap:1px"><span class="hlog" style="font-weight:600">12 screenshots → Atlas › Screens</span><span class="hsub">Filenames match "atlas-*", saved while you worked on Atlas.</span></div></div>
+<div class="hrow"><span class="hchip">92% sure</span><span class="hchip">Desktop</span></div>
+<div class="hrow"><span class="hbtn">File them</span><span class="hbtn sec">Not quite…</span><span class="hlink" style="margin-left:auto;font-size:11.5px">Skip</span></div>
+</div>
+<div class="hcard hcol" style="gap:6px">
+<div class="hrow"><span class="hav" style="background:rgba(120,120,128,.3);color:#3c3c43">ID</span><div class="hcol" style="gap:1px"><span class="hlog" style="font-weight:600">passport-scan.jpg → Personal › ID</span><span class="hchip" style="align-self:flex-start;background:rgba(255,159,10,.15);color:#b36b00">Sensitive — I never act alone</span></div></div>
+<div class="hrow"><span class="hbtn">File it</span><span class="hbtn sec">Not quite…</span></div>
+</div>
+<div class="hrow" style="padding:2px 2px 0"><span class="hsub">4 files I can't place yet — tell me later</span><span class="hsub" style="margin-left:auto">›</span></div>
+</div>
+<div class="hsep"></div>
+<div class="hrow"><span class="hsub">Everything else is already tidy</span><span class="hchip" style="margin-left:auto">···</span></div>
+</div></div>
+</div></div>
+<div class="note" style="max-width:420px">Amber only when a decision truly waits; count on the menubar pill. Reason + confidence live on every card. Sensitive files visibly guarded.</div>
+</div>
+
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Working — presence + replayable today</div>
+<div class="dv-card"><div class="wall hf" style="width:420px;padding-bottom:20px">
+<div class="hbar"><span style="width:13px;height:10px;border:1.5px solid rgba(29,29,31,.6);border-radius:3px"></span><span class="batt"></span><span class="hpill on"><span class="hg"></span><span class="hbd pulse" style="background:#007AFF"></span></span><span>Tue 21 Jul 14:02</span></div>
+<div style="display:flex;justify-content:flex-end;padding:6px 10px 0"><div class="hpop">
+<div class="hrow"><span class="hdot pulse" style="background:#007AFF"></span><span class="htitle">In Downloads right now</span></div>
+<div class="hsub" style="margin-top:2px">Sorting 3 new arrivals — changing nothing yet.</div>
+<div class="hsep"></div>
+<div class="hcard hcol" style="gap:5px">
+<div class="hrow"><span class="hdot" style="background:#007AFF;width:5px;height:5px"></span><span class="hlog">atlas-flow-v2.png</span><span class="hsub" style="margin-left:auto">reading…</span></div>
+<div class="hrow" style="opacity:.55"><span class="hdot" style="background:rgba(0,0,0,.2);width:5px;height:5px"></span><span class="hlog">Invoice 8841.pdf</span><span class="hsub" style="margin-left:auto">queued</span></div>
+<div class="hrow" style="opacity:.55"><span class="hdot" style="background:rgba(0,0,0,.2);width:5px;height:5px"></span><span class="hlog">setup.dmg</span><span class="hsub" style="margin-left:auto">queued</span></div>
+</div>
+<div class="hsep"></div>
+<div class="hhd">PROJECTS I TEND</div>
+<div class="hrow" style="margin-top:7px"><span class="hav" style="background:#3478f6">A<span class="hcnt">3</span></span><span class="hav" style="background:#2f9e8f;margin-left:-7px">F</span><span class="hav" style="background:#8e6bd0;margin-left:-7px">Q</span><span class="hav" style="background:rgba(120,120,128,.25);color:#3c3c43;margin-left:-7px">+3</span></div>
+<div class="hsep"></div>
+<div class="hrow"><span class="hhd">TODAY</span><span class="hchip" style="margin-left:auto">▶ Replay</span></div>
+<div class="hcol" style="margin-top:6px;gap:5px">
+<div class="hrow"><span class="hsub" style="width:34px">11:40</span><span class="hlog">invoice_q3.pdf → Finance › 2026</span><span class="hlink" style="margin-left:auto">Undo</span></div>
+<div class="hrow" style="opacity:.6"><span class="hsub" style="width:34px">09:15</span><span class="hlog">watched, nothing to do</span></div>
+</div>
+<div class="hsep"></div>
+<div class="hrow"><span class="hsub">Next sweep when your Mac is idle</span></div>
+</div></div>
+</div></div>
+<div class="note" style="max-width:420px">Figma-presence made literal: where it is, what it's touching, live — plus <a class="dv-oid" href="#1e">1e</a>'s replay on the Today section.</div>
+</div>
+
+<div class="dv-opt" id="2d">
+<div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Icon language — badge dot, hi-fi</div>
+<div class="dv-card"><div class="wall hf" style="width:560px;padding:16px;display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center">
+<span style="font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)">Quiet</span>
+<div class="hbar" style="border-radius:8px"><span class="batt"></span><span class="hpill"><span class="hg"></span></span><span>Tue 14:02</span></div>
+<span style="font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)">Analyzing</span>
+<div class="hbar" style="border-radius:8px"><span class="batt"></span><span class="hpill"><span class="hg"></span><span class="hbd pulse" style="background:#007AFF"></span></span><span>Tue 14:02</span></div>
+<span style="font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)">Needs you</span>
+<div class="hbar" style="border-radius:8px"><span class="batt"></span><span class="hpill"><span class="hg"></span><span class="hcnt">3</span></span><span>Tue 14:02</span></div>
+<span style="font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)">Paused</span>
+<div class="hbar" style="border-radius:8px"><span class="batt"></span><span class="hpill" style="opacity:.4"><span class="hg"></span></span><span>Tue 14:02</span></div>
+</div></div>
+<div class="note" style="max-width:560px">From <a class="dv-oid" href="#1f">1f</a>: badge-dot concept won — calmest, reads like presence. Motion only while analyzing; amber count only when decisions wait; dimmed when paused.</div>
+</div>
+
+<div class="dv-opt" id="2e">
+<div class="dv-olabel"><a class="dv-oid" href="#2e">2e</a>First-clean review window (one-time moment)</div>
+<div class="dv-card"><div class="wall hf" style="width:640px;padding:26px">
+<div style="width:560px;margin:0 auto;background:rgba(246,246,248,.97);border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.3),0 0 0 .5px rgba(0,0,0,.15);overflow:hidden">
+<div class="hrow" style="padding:10px 12px"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span style="font-size:13px;font-weight:600;margin:0 auto;transform:translateX(-22px)">First clean — your plan</span></div>
+<div style="display:flex;border-top:.5px solid rgba(0,0,0,.1)">
+<div class="hcol" style="width:172px;padding:10px;background:rgba(0,0,0,.03);border-right:.5px solid rgba(0,0,0,.08);gap:3px">
+<span class="hhd" style="margin-bottom:4px">PLAN · 29 FILES</span>
+<div class="hrow" style="background:#007AFF;color:#fff;border-radius:6px;padding:4px 7px"><span style="font-size:12px;font-weight:500">Screenshots → Atlas</span><span style="margin-left:auto;font-size:11px;opacity:.85">12</span></div>
+<div class="hrow" style="padding:4px 7px"><span class="hlog">Invoices → Finance</span><span class="hsub" style="margin-left:auto">5</span></div>
+<div class="hrow" style="padding:4px 7px"><span class="hlog">Decks → Q3</span><span class="hsub" style="margin-left:auto">8</span></div>
+<div class="hrow" style="padding:4px 7px;opacity:.65"><span class="hlog">Not sure yet</span><span class="hsub" style="margin-left:auto">4</span></div>
+</div>
+<div class="hcol" style="flex:1;padding:12px;gap:8px">
+<span class="htitle" style="font-size:14px">12 screenshots → Atlas › Screens</span>
+<span class="hsub">All match "atlas-*" or show the Atlas board. You've filed 12 like these before.</span>
+<div class="hrow"><span class="hchip">92% sure</span><span class="hchip">low risk</span><span class="hlink" style="font-size:11.5px">Why?</span></div>
+<div class="hcol" style="gap:5px;margin-top:2px">
+<div class="hrow"><span style="width:34px;height:24px;background:rgba(120,120,128,.2);border-radius:4px"></span><span class="hlog">atlas-flow-v2.png</span><span class="hsub" style="margin-left:auto">→ Screens</span></div>
+<div class="hrow"><span style="width:34px;height:24px;background:rgba(120,120,128,.2);border-radius:4px"></span><span class="hlog">atlas-board-mar.png</span><span class="hsub" style="margin-left:auto">→ Screens</span></div>
+<div class="hrow"><span style="width:34px;height:24px;background:rgba(120,120,128,.2);border-radius:4px"></span><span class="hlog">Screenshot 2026-07-14…png</span><span class="hsub" style="margin-left:auto">→ Screens</span></div>
+<span class="hsub">+ 9 more</span>
+</div>
+</div>
+</div>
+<div class="hrow" style="border-top:.5px solid rgba(0,0,0,.1);padding:10px 12px"><span class="hsub">Nothing moves until you approve · Undo anytime</span><span class="hbtn sec" style="margin-left:auto">Skip group</span><span class="hbtn">Looks right</span></div>
+</div>
+</div></div>
+<div class="note" style="max-width:640px">The <a class="dv-oid" href="#1g">1g</a> hybrid: this window appears once, for the first clean; daily decisions stay in the popover (<a class="dv-oid" href="#2b">2b</a>).</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "make <a class="dv-oid" href="#2a">2a</a>–<a class="dv-oid" href="#2c">2c</a> one interactive popover" · "hi-fi the autonomy screen from <a class="dv-oid" href="#1h">1h</a>" · "Dutch copy pass"</p>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Round 1 — journey storyboard + menubar directions</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>The journey — install to earned autonomy, 9 moments</div>
+<div class="dv-card" style="padding:16px;background:#faf9f7">
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:stretch">
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">Nothing leaves your Mac</div>
+<div class="note">I read only the folders you pick. No uploads, no account.</div>
+<div class="ln" style="width:80%"></div>
+<div class="ln" style="width:55%"></div>
+<div class="r" style="margin-top:auto"><span class="btn pri">Choose folders…</span></div>
+</div>
+<div class="note">1 · privacy promise, plain words</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">What may I look after?</div>
+<div class="r"><span class="cb">✓</span>Desktop</div>
+<div class="r"><span class="cb">✓</span>Downloads</div>
+<div class="r"><span class="cb"></span><span style="color:#8a867e">Everything else — never</span></div>
+<div class="r" style="margin-top:auto"><span class="btn pri">Grant access</span></div>
+</div>
+<div class="note">2 · standard macOS picker, least privilege</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="mbar" style="border-radius:5px"><span class="mi"></span><span class="mi"></span><span class="icell on"><span class="gx"></span><span class="bd pulse" style="background:#2a78d6"></span></span><span class="clock">Tue 14:02</span></div>
+<div class="note" style="margin-top:6px">Reading, changing nothing yet. Takes a few minutes.</div>
+<div class="ln" style="width:60%"></div>
+</div>
+<div class="note">3 · observing — presence dot only</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">I found 4 projects in the clutter</div>
+<div class="r"><span class="av f">A</span><div class="c" style="gap:2px"><span class="log">Atlas · 12 files</span><span class="note">names match "atlas-*"</span></div></div>
+<div class="r"><span class="av">F</span><div class="c" style="gap:2px"><span class="log">Finance 2026 · 5</span><span class="note">invoices, IBAN found</span></div></div>
+<div class="r"><span class="av">Q</span><span class="log">Q3 deck · 8</span></div>
+<div class="r"><span class="av" style="border-style:dashed">?</span><span class="log">Not sure · 4 — I'll ask</span></div>
+</div>
+<div class="note">4 · the aha: project context, not file types</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">First clean</div>
+<div class="r"><span class="cb">✓</span><span class="log">12 screenshots → Atlas/Screens</span></div>
+<div class="r"><span class="cb">✓</span><span class="log">5 invoices → Finance/2026</span></div>
+<div class="r"><span class="cb"></span><span class="log">4 unsure → skipped</span></div>
+<div class="sep"></div>
+<div class="r" style="border:1.6px solid #2b2a27;border-radius:6px;padding:4px 8px"><span class="log">34 files filed</span><span class="undo" style="margin-left:auto">Undo all</span></div>
+</div>
+<div class="note">5 · free clean; undo is a first-class object</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h big">Shall I keep it this way?</div>
+<div class="note">30 days of quiet upkeep. Free, no card. Every move stays undoable.</div>
+<div class="c" style="margin-top:auto;gap:5px"><span class="btn pri" style="text-align:center">Yes, quietly</span><span class="btn" style="text-align:center">Not yet</span></div>
+</div>
+<div class="note">6 · the maintenance ask, right after value</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">Make it a rule?</div>
+<div class="note">You've accepted "screenshots → Atlas/Screens" 12 times in a row.</div>
+<div class="r"><span class="chip">scope: Desktop</span><span class="chip">92% sure</span></div>
+<div class="note" style="text-decoration:underline">see the 12 examples</div>
+<div class="r" style="margin-top:auto"><span class="btn pri">Make rule</span><span class="btn">Keep asking</span></div>
+</div>
+<div class="note">7 · autonomy is offered, never taken</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">Your week, on one card</div>
+<div class="log">86 files filed · 7 projects touched · 4 set aside for you</div>
+<div class="sep"></div>
+<div class="r"><span class="log">≈ 47 min saved</span><span class="chip">my estimate</span></div>
+<div class="ln" style="width:70%"></div>
+</div>
+<div class="note">8 · weekly werkbriefje — honest, quiet</div>
+</div>
+<div class="c" style="width:200px">
+<div class="frame" style="flex:1">
+<div class="h">Trust ladder</div>
+<div class="r"><span class="cb">✓</span><span class="log">0 · Observe</span></div>
+<div class="r"><span class="cb">✓</span><span class="log">1 · Propose</span></div>
+<div class="r" style="background:#eef4fc;border-radius:5px;padding:2px 4px"><span class="dot"></span><span class="log">2 · Trusted rules — now</span></div>
+<div class="r" style="opacity:.45"><span class="cb"></span><span class="log">3 · High-confidence auto</span></div>
+</div>
+<div class="note">9 · earned, per category — never a global switch</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Popover A — status first, the WiFi pattern</div>
+<div class="dv-card" style="padding:14px;background:#faf9f7">
+<div style="width:340px">
+<div class="mbar"><span class="mi"></span><span class="mi"></span><span class="icell on"><span class="gx"></span></span><span class="clock">Tue 14:02</span></div>
+<div class="caret"></div>
+<div class="pop" style="margin-left:auto">
+<div class="r"><span class="dot" style="background:#3ba55d"></span><span class="h big">All tidy</span></div>
+<div class="note" style="margin-top:-6px">Watching Desktop + Downloads, quietly.</div>
+<div class="sep"></div>
+<div class="r"><span class="h">Needs you</span><span class="chip" style="background:#d68a2a;color:#fff;border-color:#d68a2a">3</span><span style="margin-left:auto;color:#8a867e">›</span></div>
+<div class="note">3 groups waiting — no rush, nothing moves without you.</div>
+<div class="sep"></div>
+<div class="h">Today</div>
+<div class="log">14:02 · 3 screenshots → Atlas/Screens <span class="undo">undo</span></div>
+<div class="log">11:40 · invoice_q3.pdf → Finance/2026 <span class="undo">undo</span></div>
+<div class="log">09:15 · nothing to do ·—</div>
+<div class="sep"></div>
+<div class="r note"><span>On this Mac only · every move undoable</span><span style="margin-left:auto;display:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.8v2.2M8 12v2.2M1.8 8H4M12 8h2.2M3.6 3.6l1.6 1.6M10.8 10.8l1.6 1.6M12.4 3.6l-1.6 1.6M5.2 10.8l-1.6 1.6"></path></svg></span></div>
+</div>
+<div class="note" style="margin-top:10px">Like the WiFi menu: one glance = state. Sections: status → decisions → log → privacy footer. Never modal.</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Popover B — decision inbox</div>
+<div class="dv-card" style="padding:14px;background:#faf9f7">
+<div style="width:340px">
+<div class="mbar"><span class="mi"></span><span class="mi"></span><span class="icell on"><span class="gx"></span><span class="bd" style="background:#d68a2a"></span></span><span class="clock">Tue 14:02</span></div>
+<div class="caret"></div>
+<div class="pop" style="margin-left:auto">
+<div class="h big">3 decisions, no rush</div>
+<div class="c" style="border:1.6px solid #2b2a27;border-radius:8px;padding:8px">
+<div class="r"><span class="av f">A</span><div class="c" style="gap:1px"><span class="log">12 screenshots → Atlas / Screens</span><span class="note">because names match "atlas-*" + taken during Atlas work</span></div></div>
+<div class="r"><span class="btn pri">File them</span><span class="btn">Not quite…</span><span class="note" style="margin-left:auto;text-decoration:underline">skip</span></div>
+</div>
+<div class="c" style="border:1.6px solid #2b2a27;border-radius:8px;padding:8px">
+<div class="r"><span class="av">F</span><div class="c" style="gap:1px"><span class="log">passport-scan.jpg → Personal / ID</span><span class="r"><span class="chip" style="border-color:#d68a2a;color:#d68a2a">sensitive — I never act alone</span></span></div></div>
+<div class="r"><span class="btn pri">File it</span><span class="btn">Not quite…</span></div>
+</div>
+<div class="c" style="border:1.6px dashed #b9b5ac;border-radius:8px;padding:8px">
+<div class="log">I couldn't place 4 files — tell me later?</div>
+</div>
+<div class="sep"></div>
+<div class="note">Everything else is already tidy.</div>
+</div>
+<div class="note" style="margin-top:10px">Review lives in the popover. Zero-inbox feel; reasons inline; sensitive files visibly guarded.</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1d">
+<div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Popover C — presence &amp; project avatars (Figma-style)</div>
+<div class="dv-card" style="padding:14px;background:#faf9f7">
+<div style="width:340px">
+<div class="mbar"><span class="mi"></span><span class="mi"></span><span class="icell on"><span class="gx"></span><span class="bd pulse" style="background:#2a78d6"></span></span><span class="clock">Tue 14:02</span></div>
+<div class="caret"></div>
+<div class="pop" style="margin-left:auto">
+<div class="r"><span class="dot pulse"></span><div class="c" style="gap:1px"><span class="h">In Downloads right now</span><span class="note">sorting 3 new files — changing nothing yet</span></div></div>
+<div class="sep"></div>
+<div class="h">Projects I tend</div>
+<div class="r" style="gap:10px"><span class="av f">A<span class="cnt">3</span></span><span class="av">F</span><span class="av">Q</span><span class="av">P</span><span class="av" style="border-style:dashed">+2</span></div>
+<div class="c" style="border:1.6px solid #2a78d6;border-radius:8px;padding:8px;background:#f4f8fd">
+<div class="r"><span class="av f" style="width:18px;height:18px;font-size:9px">A</span><span class="h">Atlas</span><span class="note" style="margin-left:auto">hover card</span></div>
+<div class="log">· atlas-flow-v2.png — arriving now</div>
+<div class="log">· atlas-notes.pdf — filed Mon <span class="undo">undo</span></div>
+<div class="log">· 1 waiting for you ›</div>
+</div>
+<div class="sep"></div>
+<div class="r note"><span class="dot" style="background:#3ba55d"></span><span>quiet · next sweep when your Mac is idle</span></div>
+</div>
+<div class="note" style="margin-top:10px">The archivist as a collaborator: avatar stack = projects it tends; presence line = where it is now. Counts = items needing you.</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1e">
+<div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Popover D — journal + follow mode (replay)</div>
+<div class="dv-card" style="padding:14px;background:#faf9f7">
+<div style="width:340px">
+<div class="mbar"><span class="mi"></span><span class="mi"></span><span class="icell on"><span class="gx"></span></span><span class="clock">Tue 14:02</span></div>
+<div class="caret"></div>
+<div class="pop" style="margin-left:auto">
+<div class="r"><span class="h big">Today, in order</span><span class="btn" style="margin-left:auto">▶ Replay</span></div>
+<div style="position:relative;height:10px;display:flex;align-items:center"><span style="width:100%;height:4px;background:#ddd9d1;border-radius:2px"></span><span style="position:absolute;left:60%;width:10px;height:10px;border-radius:50%;background:#2a78d6"></span></div>
+<div class="log" style="opacity:.5">09:15 · watched, nothing to do</div>
+<div class="log" style="opacity:.6">11:40 · invoice_q3.pdf → Finance/2026 <span class="undo">undo</span></div>
+<div class="c" style="border:1.6px solid #2a78d6;border-radius:7px;padding:6px;background:#f4f8fd;gap:2px">
+<span class="log">14:02 · 3 screenshots → Atlas/Screens</span>
+<span class="note">why: filenames + you filed 12 like these</span>
+<span class="r"><span class="undo">undo</span><span class="note" style="margin-left:auto">show in Finder ›</span></span>
+</div>
+<div class="log" style="opacity:.5">— now · watching quietly</div>
+<div class="sep"></div>
+<div class="note">Nothing happens off the record.</div>
+</div>
+<div class="note" style="margin-top:10px">Trust through replay (Figma "follow"): scrub the day, every step explained + undoable.</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1f">
+<div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>Menubar icon language — 3 concepts × 4 states</div>
+<div class="dv-card" style="padding:16px;background:#faf9f7">
+<div style="display:grid;grid-template-columns:110px repeat(4,64px) 1fr;gap:10px 14px;align-items:center;width:620px">
+<span></span><span class="note">quiet</span><span class="note">analyzing</span><span class="note">needs you</span><span class="note">paused</span><span></span>
+<span class="h">Badge dot</span>
+<span class="icell on"><span class="gx"></span></span>
+<span class="icell on"><span class="gx"></span><span class="bd pulse" style="background:#2a78d6"></span></span>
+<span class="icell on"><span class="gx"></span><span class="bd" style="background:#d68a2a"></span></span>
+<span class="icell on" style="opacity:.45"><span class="gx"></span></span>
+<span class="note">calmest; reads like Figma presence. Color does the talking.</span>
+<span class="h">Filling box</span>
+<span class="icell on"><span class="gx"><span style="position:absolute;left:3px;top:5px;font-size:8px">✓</span></span></span>
+<span class="icell on"><span class="gx"><span class="fb" style="left:2.5px;height:3px"></span><span class="fb" style="left:6px;height:5px"></span><span class="fb" style="left:9.5px;height:7px"></span></span></span>
+<span class="icell on"><span class="gx"></span><span style="position:absolute;top:0;right:2px;min-width:11px;height:11px;border-radius:6px;background:#d68a2a;color:#fff;font:600 8px/11px system-ui;text-align:center;padding:0 2px">3</span></span>
+<span class="icell on" style="opacity:.45"><span class="gx"></span><span style="position:absolute;width:16px;border-top:1.6px solid #2b2a27;transform:rotate(-35deg)"></span></span>
+<span class="note">WiFi-like: the glyph itself shows work filling up; count when decisions wait.</span>
+<span class="h">Presence ring</span>
+<span class="icell on"><span style="width:19px;height:19px;border-radius:50%;border:1.6px solid transparent;display:flex;align-items:center;justify-content:center"><span class="gx" style="width:13px;height:11px"></span></span></span>
+<span class="icell on"><span class="pulse" style="width:19px;height:19px;border-radius:50%;border:1.6px solid #2a78d6;display:flex;align-items:center;justify-content:center"><span class="gx" style="width:13px;height:11px"></span></span></span>
+<span class="icell on"><span style="width:19px;height:19px;border-radius:50%;border:1.6px solid #d68a2a;border-bottom-color:transparent;display:flex;align-items:center;justify-content:center"><span class="gx" style="width:13px;height:11px"></span></span></span>
+<span class="icell on" style="opacity:.45"><span style="width:19px;height:19px;border-radius:50%;border:1.6px dashed #2b2a27;display:flex;align-items:center;justify-content:center"><span class="gx" style="width:13px;height:11px"></span></span></span>
+<span class="note">avatar-with-ring metaphor: the ring is the agent's "presence", arc = attention.</span>
+</div>
+<div class="note" style="margin-top:12px">Rule for all three: no motion when idle, subtle motion only while analyzing, amber only when a decision truly waits.</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1g">
+<div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>Where review happens — 3 containers</div>
+<div class="dv-card" style="padding:16px;background:#faf9f7">
+<div style="display:flex;gap:18px;align-items:flex-start">
+<div class="c" style="width:170px">
+<div class="frame" style="width:170px">
+<div class="h">In the popover</div>
+<div class="r"><span class="cb">✓</span><span class="ln" style="width:90px"></span></div>
+<div class="r"><span class="cb">✓</span><span class="ln" style="width:70px"></span></div>
+<div class="r"><span class="cb"></span><span class="ln" style="width:80px"></span></div>
+<div class="r"><span class="btn pri">File 2</span></div>
+</div>
+<div class="note">fast, in context · cramped past ~5 groups</div>
+</div>
+<div class="c" style="width:280px">
+<div class="frame" style="width:280px">
+<div class="h">Separate review window</div>
+<div class="r" style="align-items:stretch">
+<div class="c" style="width:90px;border-right:1px solid #e8e5de;padding-right:6px">
+<span class="log" style="background:#eef4fc;border-radius:4px;padding:1px 4px">Atlas · 12</span>
+<span class="log">Finance · 5</span>
+<span class="log">Unsure · 4</span>
+</div>
+<div class="c" style="flex:1">
+<div class="box" style="height:34px;border:1.5px dashed #b9b5ac;border-radius:6px;display:flex;align-items:center;justify-content:center" ><span class="note">preview</span></div>
+<span class="note">why: filename + OCR "Atlas"</span>
+<div class="r"><span class="btn pri">Looks right</span><span class="btn">Change…</span></div>
+</div>
+</div>
+</div>
+<div class="note">room for previews + reasons · one-time moments (first clean)</div>
+</div>
+<div class="c" style="width:190px">
+<div class="frame" style="width:190px">
+<div class="h">Popover expands</div>
+<div class="ln" style="width:60%"></div>
+<div style="border:1.6px dashed #2a78d6;border-radius:7px;padding:6px" class="c">
+<span class="note" style="color:#2a78d6">…grows in place ↓</span>
+<div class="ln" style="width:80%"></div>
+<div class="ln" style="width:65%"></div>
+</div>
+</div>
+<div class="note">stays anchored to the menubar · can feel jumpy</div>
+</div>
+</div>
+<div class="note" style="margin-top:12px">Hybrid worth testing: daily decisions in popover (1c), first clean in the window.</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1h">
+<div class="dv-olabel"><a class="dv-oid" href="#1h">1h</a>Showing earned autonomy — 3 models</div>
+<div class="dv-card" style="padding:16px;background:#faf9f7">
+<div style="display:flex;gap:18px;align-items:flex-start">
+<div class="c" style="width:180px">
+<div class="frame" style="width:180px">
+<div class="h">Ladder</div>
+<div class="r"><span class="cb">✓</span><span class="log">0 Observe</span></div>
+<div class="r"><span class="cb">✓</span><span class="log">1 Propose</span></div>
+<div class="r" style="background:#eef4fc;border-radius:5px;padding:2px 4px"><span class="dot"></span><span class="log">2 Trusted rules</span></div>
+<div class="r" style="opacity:.45"><span class="cb"></span><span class="log">3 Auto (locked)</span></div>
+<div class="note">unlocks after 30 clean days</div>
+</div>
+<div class="note">clear story · a bit gamified</div>
+</div>
+<div class="c" style="width:230px">
+<div class="frame" style="width:230px">
+<div class="h">Per-category trust</div>
+<div class="r"><span class="log">Screenshots</span><span class="chip" style="margin-left:auto;background:#2a78d6;color:#fff;border-color:#2a78d6">auto ✓</span></div>
+<div class="r"><span class="log">Installers</span><span class="chip" style="margin-left:auto;background:#2a78d6;color:#fff;border-color:#2a78d6">auto ✓</span></div>
+<div class="r"><span class="log">Documents</span><span class="chip" style="margin-left:auto">8 more accepts</span></div>
+<div class="r"><span class="log">Sensitive</span><span class="chip" style="margin-left:auto;border-color:#d68a2a;color:#d68a2a">always asks</span></div>
+</div>
+<div class="note">matches the risk-class model · honest about "why not yet"</div>
+</div>
+<div class="c" style="width:240px">
+<div class="frame" style="width:240px">
+<div class="h">Rules with receipts</div>
+<div class="c" style="border:1.6px solid #2b2a27;border-radius:7px;padding:6px;gap:3px">
+<div class="r"><span class="log">screenshots → Atlas/Screens</span><span class="cb" style="margin-left:auto;border-radius:8px">✓</span></div>
+<div class="r"><span class="chip">Desktop</span><span class="chip">92%</span><span class="note" style="text-decoration:underline">12 examples</span></div>
+</div>
+<div class="c" style="border:1.6px solid #2b2a27;border-radius:7px;padding:6px;gap:3px">
+<div class="r"><span class="log">.dmg older than 7d → Archive</span><span class="cb" style="margin-left:auto;border-radius:8px"></span></div>
+<div class="r"><span class="chip">Downloads</span><span class="chip">88%</span><span class="note" style="text-decoration:underline">5 examples</span></div>
+</div>
+</div>
+<div class="note">most transparent · most UI to read</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "combine <a class="dv-oid" href="#1b">1b</a>'s status with <a class="dv-oid" href="#1d">1d</a>'s avatars" · "go deeper on the first-clean review from <a class="dv-oid" href="#1g">1g</a>" · "hi-fi the icon states in <a class="dv-oid" href="#1f">1f</a>"</p>
+</section>
+</x-dc>
+</body>
+</html>

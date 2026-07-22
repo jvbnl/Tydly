@@ -1,0 +1,55 @@
+/* Tydly — English base strings.
+   Keys are the base-English strings themselves; a future nl.lproj swaps the values.
+   Composed lines use positional specifiers (%1$d, %2$@) so translations can reorder. */
+
+/* File nouns */
+"screenshot" = "screenshot";
+"screenshots" = "screenshots";
+"invoice" = "invoice";
+"invoices" = "invoices";
+"deck" = "deck";
+"decks" = "decks";
+"document" = "document";
+"documents" = "documents";
+"installer" = "installer";
+"installers" = "installers";
+"file" = "file";
+"files" = "files";
+
+/* Popover — all tidy */
+"All tidy" = "All tidy";
+"Today" = "Today";
+"Settings…" = "Settings…";
+"Filed %1$d %2$@" = "Filed %1$d %2$@";
+
+/* Popover — decision */
+"%d decision" = "%d decision";
+"%d decisions" = "%d decisions";
+"%1$d %2$@ → %3$@" = "%1$d %2$@ → %3$@";
+"why?" = "why?";
+"Show me" = "Show me";
+"Skip" = "Skip";
+"Nothing moves without you" = "Nothing moves without you";
+"%1$d parked · asks again %2$@" = "%1$d parked · asks again %2$@";
+
+/* Popover — working / observing */
+"Sorting %1$d in %2$@" = "Sorting %1$d in %2$@";
+"reading…" = "reading…";
+"queued" = "queued";
+"Next sweep when your Mac is idle" = "Next sweep when your Mac is idle";
+"Reading, changing nothing" = "Reading, changing nothing";
+"%@ · a few minutes" = "%@ · a few minutes";
+
+/* Onboarding */
+"Nothing leaves this Mac" = "Nothing leaves this Mac";
+"No account. No cloud. No exceptions." = "No account. No cloud. No exceptions.";
+"Continue" = "Continue";
+"Where may I work?" = "Where may I work?";
+"Desktop" = "Desktop";
+"Downloads" = "Downloads";
+"The rest of your Mac stays off-limits." = "The rest of your Mac stays off-limits.";
+"Allow these 2 folders" = "Allow these 2 folders";
+"Your archivist needs a name" = "Your archivist needs a name";
+"own…" = "own…";
+"Signs their work as" = "Signs their work as";
+"Meet %@" = "Meet %@";

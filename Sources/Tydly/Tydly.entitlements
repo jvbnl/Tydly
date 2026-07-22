@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Sandbox on. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Folder access is granted by the user through NSOpenPanel and persisted as
+	     security-scoped bookmarks (Desktop, Downloads). Nothing else is reachable. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+
+	<!-- Deliberately NO network entitlement. The privacy promise ("Nothing leaves
+	     this Mac") is made structurally true: without com.apple.security.network.client
+	     the sandbox cannot open an outbound connection, no matter what the code does.
+	     Do not add a network entitlement. -->
+</dict>
+</plist>

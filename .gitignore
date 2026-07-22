@@ -1,0 +1,21 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Build output
+dist/
+*.app
+
+# macOS
+.DS_Store
+
+# Xcode (not used, but ignore if anyone opens the package there)
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+
+# Editors
+.vscode/
+*.swp
