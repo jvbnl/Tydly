@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#e7e8ea;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#007AFF;text-decoration:none}a:hover{color:#0a63c9}
+@keyframes jpulse{0%{box-shadow:0 0 0 0 rgba(0,122,255,.45)}70%{box-shadow:0 0 0 5px rgba(0,122,255,0)}100%{box-shadow:0 0 0 0 rgba(0,122,255,0)}}
+.pulse{animation:jpulse 1.6s infinite}
+.ph{padding:44px 48px 36px;border-bottom:1px solid rgba(0,0,0,.07)}
+.phd{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.pnum{font-size:11px;font-weight:700;letter-spacing:.08em;color:#fff;background:#1d1d1f;border-radius:5px;padding:3px 8px}
+.ptitle{font-size:16px;font-weight:700;color:#1d1d1f;margin:0}
+.psub{font-size:12.5px;color:rgba(50,50,56,.8);margin:0 0 22px;max-width:620px;line-height:1.55}
+.row{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+.scr{display:flex;flex-direction:column;gap:8px}
+.cap{font-size:12px;color:rgba(50,50,56,.82);max-width:290px;line-height:1.5}
+.cap b{color:#1d1d1f;font-weight:600}
+.sc{--pri:#007AFF;--fg:#1d1d1f;--mut:rgba(60,60,67,.6);--brd:rgba(0,0,0,.1);color:#1d1d1f;font-size:13px;line-height:1.4}
+.nsm{width:290px;background:rgba(246,246,248,.9);backdrop-filter:blur(30px) saturate(1.6);border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.12);padding:5px;display:flex;flex-direction:column;font-size:13px}
+.mrow{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:7px}
+.msec{padding:4px 10px 2px;font-size:11px;font-weight:600;color:rgba(60,60,67,.6)}
+.msep{height:.5px;background:rgba(0,0,0,.1);margin:4px 10px}
+.scard{background:rgba(255,255,255,.75);border-radius:9px;box-shadow:0 0 0 .5px rgba(0,0,0,.07);margin:2px 5px;padding:8px 9px;display:flex;flex-direction:column;gap:7px}
+.sbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:500;background:#007AFF;color:#fff;white-space:nowrap;box-shadow:0 1px 2px rgba(0,122,255,.3)}
+.sbtn.sec{background:rgba(120,120,128,.14);color:#1d1d1f;box-shadow:none}
+.sbtn.out{background:#fff;color:#1d1d1f;box-shadow:0 0 0 .5px rgba(0,0,0,.12)}
+.sbtn.lnk{background:transparent;color:#007AFF;box-shadow:none;padding:0 4px}
+.sbtn.des{background:rgba(255,59,48,.1);color:#d70015;box-shadow:none}
+.sbtn.sm{height:22px;padding:0 8px;font-size:11px;border-radius:6px}
+.sbdg{display:inline-flex;align-items:center;gap:4px;height:17px;padding:0 7px;border-radius:999px;font-size:10px;font-weight:600;background:rgba(120,120,128,.13);color:rgba(60,60,67,.7);white-space:nowrap}
+.sbdg.ok{background:rgba(52,199,89,.15);color:#1d7a3a}
+.sbdg.warn{background:rgba(255,159,10,.17);color:#b36b00}
+.sbdg.out{background:transparent;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)}
+.fch{display:inline-flex;align-items:center;gap:4px;background:rgba(120,120,128,.13);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:500;white-space:nowrap}
+.ssw{flex:none;width:32px;height:19px;border-radius:10px;background:#34C759;position:relative}
+.ssw::after{content:"";position:absolute;top:1.5px;right:1.5px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.ssw.off{background:rgba(120,120,128,.25)}
+.ssw.off::after{right:auto;left:1.5px}
+.sseg{display:flex;gap:2px;background:rgba(120,120,128,.13);border-radius:8px;padding:2px;margin:2px 5px}
+.sseg span{flex:1;text-align:center;font-size:11px;font-weight:500;padding:3px 8px;border-radius:6px;color:rgba(60,60,67,.6);white-space:nowrap}
+.sseg .on{background:#fff;color:#1d1d1f;box-shadow:0 1px 2px rgba(0,0,0,.1);font-weight:600}
+.sprog{height:4px;border-radius:2px;background:rgba(120,120,128,.16);overflow:hidden;position:relative;flex:none}
+.sprog i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#007AFF}
+.hav{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff}
+.hdot{flex:none;width:7px;height:7px;border-radius:50%}
+.mbar{height:26px;display:flex;align-items:center;justify-content:flex-end;gap:11px;padding:0 11px;background:rgba(255,255,255,.55);backdrop-filter:blur(20px);border-radius:8px;font-size:11.5px;font-weight:500;color:#1d1d1f;box-shadow:0 0 0 .5px rgba(0,0,0,.08)}
+.pill{position:relative;display:flex;align-items:center;justify-content:center;height:20px;padding:0 6px;border-radius:5px}
+.pill.on{background:rgba(0,0,0,.09)}
+.g{position:relative;width:14px;height:11px;border:1.5px solid #1d1d1f;border-radius:3px}
+.g::before{content:"";position:absolute;left:2px;right:2px;top:2px;border-top:1.5px solid #1d1d1f}
+.bd{position:absolute;top:0;right:1px;width:6px;height:6px;border-radius:50%;border:1.5px solid rgba(255,255,255,.9)}
+.cnt{position:absolute;top:-4px;right:-4px;min-width:13px;height:13px;border-radius:7px;background:#FF9F0A;color:#fff;font-size:8.5px;font-weight:700;line-height:13px;text-align:center;padding:0 3px}
+.win{background:rgba(246,246,248,.97);border-radius:12px;box-shadow:0 20px 52px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.13);overflow:hidden}
+.wtb{display:flex;align-items:center;gap:6px;padding:9px 12px}
+.tl{width:10px;height:10px;border-radius:50%}
+.wtt{font-size:12.5px;font-weight:600;margin:0 auto;transform:translateX(-22px)}
+.fic{width:36px;height:26px;background:rgba(255,255,255,.95);border-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.16);position:relative}
+.fic::before{content:"";position:absolute;left:6px;right:6px;top:6px;height:2px;background:rgba(0,0,0,.14);border-radius:1px}
+.fic::after{content:"";position:absolute;left:6px;right:13px;top:12px;height:2px;background:rgba(0,0,0,.11);border-radius:1px}
+.gho{border:1.5px dashed #007AFF;background:rgba(0,122,255,.08);box-shadow:none}
+.gho::before,.gho::after{background:rgba(0,122,255,.25)}
+.dico{display:flex;flex-direction:column;align-items:center;gap:3px;width:58px}
+.dlab{font-size:9.5px;text-align:center;max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cur{width:0;height:0;border-left:11px solid #007AFF;border-top:4px solid transparent;border-bottom:12px solid transparent;transform:rotate(-15deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
+.ctag{background:#007AFF;color:#fff;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.25);white-space:nowrap}
+.dbar{display:flex;align-items:center;gap:10px;background:rgba(28,28,30,.88);backdrop-filter:blur(20px);border-radius:999px;padding:6px 8px 6px 13px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.32);font-size:11.5px}
+.wall{position:relative;border-radius:12px;overflow:hidden;background:linear-gradient(140deg,#b3c7e6 0%,#cbb9de 45%,#ecc9cf 100%)}
+.stp{display:flex;justify-content:center;gap:5px;margin-bottom:2px}
+.stp span{width:6px;height:6px;border-radius:3px;background:rgba(0,0,0,.15)}
+.stp .on{width:16px;background:#007AFF}
+.obc{width:250px;min-height:196px;background:rgba(246,246,248,.9);backdrop-filter:blur(28px);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.12);padding:12px;display:flex;flex-direction:column;gap:7px}
+.htitle{font-size:15px;font-weight:600}
+.hsub{font-size:11.5px;color:rgba(60,60,67,.65)}
+</style>
+</helmet>
+<div class="sc" style="padding:36px 48px 10px">
+<h1 style="margin:0;font-size:22px;font-weight:800;letter-spacing:-.01em">Otto: the customer journey</h1>
+<div style="font-size:12.5px;color:rgba(60,60,67,.6);margin-top:4px">Native menu material, kit components, system window anatomy. SiSeven phases, from install to renewal.</div>
+</div>
+
+<section class="ph sc" data-screen-label="01 Meet Otto">
+<div class="phd"><span class="pnum">01</span><h2 class="ptitle">Meet Otto</h2></div>
+<p class="psub">Three cards, one idea each. Trust is set before anything runs: what it sees, where it works, who it is.</p>
+<div class="row">
+<div class="scr"><div class="obc">
+<div class="stp"><span class="on"></span><span></span><span></span></div>
+<div style="align-self:center;width:40px;height:40px;border-radius:12px;background:rgba(52,199,89,.14);color:#1d7a3a;display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg></div>
+<span class="htitle" style="text-align:center">Nothing leaves this Mac</span>
+<span class="hsub" style="text-align:center">No account. No cloud. No exceptions.</span>
+<span class="sbtn" style="margin-top:auto">Continue</span>
+</div><span class="cap"><b>Privacy first.</b> The promise before the pitch.</span></div>
+<div class="scr"><div class="obc">
+<div class="stp"><span></span><span class="on"></span><span></span></div>
+<span class="htitle" style="text-align:center">Where may I work?</span>
+<div class="scard" style="flex-direction:row;align-items:center;margin:0"><span style="width:18px;display:flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="8" rx="1"></rect><path d="M6 13.5h4"></path></svg></span><span style="font-weight:500">Desktop</span><span style="margin-left:auto;color:#007AFF;font-weight:600">✓</span></div>
+<div class="scard" style="flex-direction:row;align-items:center;margin:0"><span style="width:18px;display:flex;justify-content:center"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v5M5.8 8.3 8 10.5l2.2-2.2"></path></svg></span><span style="font-weight:500">Downloads</span><span style="margin-left:auto;color:#007AFF;font-weight:600">✓</span></div>
+<span class="hsub" style="text-align:center">The rest of your Mac stays off-limits.</span>
+<span class="sbtn" style="margin-top:auto">Allow these 2 folders</span>
+</div><span class="cap"><b>Least privilege,</b> stated in the button itself.</span></div>
+<div class="scr"><div class="obc">
+<div class="stp"><span></span><span></span><span class="on"></span></div>
+<span class="htitle" style="text-align:center">Your archivist needs a name</span>
+<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:6px"><span class="sbdg" style="background:#007AFF;color:#fff;height:20px;font-size:11px">Otto</span><span class="sbdg" style="height:20px;font-size:11px">Ada</span><span class="sbdg" style="height:20px;font-size:11px">Juno</span><span class="sbdg out" style="height:20px;font-size:11px">own…</span></div>
+<div style="display:flex;justify-content:center;gap:8px"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #3478f6">O</span><span class="hav" style="background:#2f9e8f;width:20px;height:20px;font-size:9px">O</span><span class="hav" style="background:#8e6bd0;width:20px;height:20px;font-size:9px">O</span><span class="hav" style="background:#c77d4a;width:20px;height:20px;font-size:9px">O</span></div>
+<div class="scard" style="flex-direction:row;align-items:center;margin:0;padding:6px 9px"><span class="hsub">Signs his work as</span><span class="ctag" style="margin-left:auto">Otto</span></div>
+<div style="display:flex;gap:6px;margin-top:auto"><span class="sbtn" style="flex:1">Meet Otto</span><span class="sbtn sec">Skip</span></div>
+</div><span class="cap"><b>Naming = ownership.</b> Ten seconds of investment; skippable.</span></div>
+</div>
+</section>
+
+<section class="ph sc" data-screen-label="02 First clean">
+<div class="phd"><span class="pnum">02</span><h2 class="ptitle">The first clean</h2></div>
+<p class="psub">Otto observes, proposes a plan, then demonstrates it in Finder. Nothing moves until "Looks right".</p>
+<div class="row">
+<div class="scr"><div style="display:flex;flex-direction:column;gap:8px;width:290px">
+<div class="mbar"><span class="pill on"><span class="g"></span><span class="bd pulse" style="background:#007AFF"></span></span><span>Tue 14:02</span></div>
+<div class="nsm" style="width:100%">
+<div class="mrow"><span class="hdot pulse" style="background:#007AFF"></span><span style="font-weight:600">Reading, changing nothing</span></div>
+<div class="mrow" style="padding-top:0"><span style="font-size:11px;color:rgba(60,60,67,.6)">Desktop &amp; Downloads · a few minutes</span></div>
+</div>
+</div><span class="cap"><b>Observing.</b> Blue dot pulses; the copy says exactly what's happening.</span></div>
+<div class="scr"><div class="win" style="width:470px">
+<div class="wtb"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span class="wtt">Otto's plan · 29 files</span></div>
+<div style="display:flex;border-top:.5px solid rgba(0,0,0,.1)">
+<div style="width:150px;padding:9px;background:rgba(0,0,0,.03);border-right:.5px solid rgba(0,0,0,.08);display:flex;flex-direction:column;gap:2px">
+<div style="display:flex;align-items:center;background:#007AFF;color:#fff;border-radius:6px;padding:4px 7px;font-size:12px;font-weight:500"><span>Screenshots</span><span style="margin-left:auto;opacity:.85">12</span></div>
+<div style="display:flex;align-items:center;padding:4px 7px;font-size:12px"><span>Invoices</span><span style="margin-left:auto;color:rgba(60,60,67,.5)">5</span></div>
+<div style="display:flex;align-items:center;padding:4px 7px;font-size:12px"><span>Decks</span><span style="margin-left:auto;color:rgba(60,60,67,.5)">8</span></div>
+<div style="display:flex;align-items:center;padding:4px 7px;font-size:12px;opacity:.6"><span>Not sure yet</span><span style="margin-left:auto">4</span></div>
+</div>
+<div style="flex:1;padding:11px;display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13.5px;font-weight:600">12 screenshots</span>
+<div style="display:flex;align-items:center;gap:6px"><span style="font-size:12px;color:rgba(60,60,67,.65)">to</span><span class="fch"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Atlas › Screens</span><div class="sprog" style="width:50px"><i style="width:92%;background:#34C759"></i></div><span class="sbtn lnk sm">why?</span></div>
+<div style="display:flex;gap:9px;margin-top:2px"><span class="fic"></span><span class="fic"></span><span class="fic"></span><span style="font-size:11px;color:rgba(60,60,67,.5);align-self:center">+ 9 more</span></div>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;border-top:.5px solid rgba(0,0,0,.1);padding:9px 12px"><span style="font-size:11px;color:rgba(60,60,67,.6)">Nothing moves until you approve</span><span class="sbtn sec sm" style="margin-left:auto">Skip group</span><span class="sbtn sm">Show me in Finder</span></div>
+</div><span class="cap"><b>The plan window</b>, a one-time moment. Groups left, evidence right, one primary action.</span></div>
+<div class="scr"><div class="wall sc" style="width:560px;height:330px">
+<div class="dbar" style="position:absolute;top:10px;left:50%;transform:translateX(-50%)"><span class="hdot pulse" style="background:#4da3ff"></span><span>Preview: nothing has moved yet</span><span style="opacity:.6;font-size:10px">esc</span></div>
+<div style="position:absolute;left:18px;top:52px;display:flex;flex-direction:column;gap:9px">
+<span class="fch" style="background:rgba(255,255,255,.5)">Desktop</span>
+<div style="display:grid;grid-template-columns:repeat(2,58px);gap:9px">
+<div class="dico" style="opacity:.4"><span class="fic"></span><span class="dlab" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)">atlas-flow</span></div>
+<div class="dico"><span class="fic"></span><span class="dlab" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)">notes.txt</span></div>
+<div class="dico" style="opacity:.4"><span class="fic"></span><span class="dlab" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)">atlas-board</span></div>
+</div>
+</div>
+<div style="position:absolute;left:150px;top:112px;width:130px;border-top:2px dashed rgba(0,122,255,.6);transform:rotate(12deg)"></div>
+<div style="position:absolute;left:232px;top:86px;z-index:5;display:flex;flex-direction:column;align-items:flex-start">
+<span class="fic gho" style="transform:rotate(-6deg)"></span>
+<div style="display:flex;margin-left:14px"><span class="cur"></span><span class="ctag" style="margin:11px 0 0 -4px">Otto</span></div>
+</div>
+<div class="win" style="position:absolute;right:14px;bottom:118px;width:330px">
+<div class="wtb" style="padding:7px 10px"><span class="tl" style="background:#ff5f57;width:8px;height:8px"></span><span class="tl" style="background:#febc2e;width:8px;height:8px"></span><span class="tl" style="background:#28c840;width:8px;height:8px"></span><span class="wtt" style="font-size:11.5px">Screens</span></div>
+<div style="padding:10px;display:grid;grid-template-columns:repeat(4,58px);gap:9px;border-top:.5px solid rgba(0,0,0,.1)">
+<div class="dico"><span class="fic"></span><span class="dlab">screens-jun</span></div>
+<div class="dico"><span class="fic"></span><span class="dlab">flow-v1</span></div>
+<div class="dico"><span class="fic gho"></span><span class="dlab" style="color:#007AFF">atlas-flow</span></div>
+<div class="dico"><span class="fic gho"></span><span class="dlab" style="color:#007AFF">+ 11 more</span></div>
+</div>
+</div>
+<div style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:320px;background:rgba(246,246,248,.92);backdrop-filter:blur(28px) saturate(1.6);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.24),0 0 0 .5px rgba(0,0,0,.12);padding:12px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12.5px;font-weight:600">Move 12 screenshots to "Screens"?</span><span style="font-size:11px;color:rgba(60,60,67,.65)">In Atlas. You can undo this at any time.</span></div>
+<div style="display:flex;justify-content:flex-end;gap:8px"><span class="sbtn" style="background:#fff;color:#1d1d1f;box-shadow:0 .5px 1.5px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.08);height:24px;border-radius:6px;min-width:84px">Not Quite…</span><span class="sbtn" style="background:linear-gradient(#2f8bff,#007AFF);height:24px;border-radius:6px;min-width:84px">Looks Right</span></div>
+</div>
+</div><span class="cap"><b>The demonstration.</b> Otto's cursor carries ghost files into the folder: approval on evidence, not a claim.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span class="hdot" style="background:#34C759"></span><span style="font-weight:600">29 files filed</span><span class="sbtn lnk sm" style="margin-left:auto">Undo all</span></div>
+<div class="msep"></div>
+<div class="mrow" style="flex-direction:column;align-items:stretch;gap:6px">
+<span style="font-size:12px;color:rgba(60,60,67,.75)">Shall I keep it this way? 30 days free, every move undoable.</span>
+<div style="display:flex;gap:6px"><span class="sbtn sm" style="flex:1">Yes, quietly</span><span class="sbtn sec sm">Not yet</span></div>
+</div>
+</div><span class="cap"><b>The receipt and the ask.</b> Maintenance is offered right after value, never before.</span></div>
+</div>
+</section>
+
+<section class="ph sc" data-screen-label="03 Daily rhythm">
+<div class="phd"><span class="pnum">03</span><h2 class="ptitle">Daily rhythm</h2></div>
+<p class="psub">One glyph, five states, one color each. The popover is a native menu: status → decisions → today → settings.</p>
+<div class="row">
+<div class="scr"><div style="display:flex;flex-direction:column;gap:7px;width:210px">
+<div class="mbar"><span class="pill on"><span class="g"></span></span><span>14:02</span></div>
+<div class="mbar"><span class="pill on"><span class="g"></span><span class="bd pulse" style="background:#007AFF"></span></span><span>14:02</span></div>
+<div class="mbar"><span class="pill on"><span class="g"></span><span class="cnt">2</span></span><span>14:02</span></div>
+<div class="mbar"><span class="pill on" style="opacity:.4"><span class="g"></span></span><span>14:02</span></div>
+<div class="mbar"><span class="pill on"><span class="g"></span><span class="bd" style="background:#FF3B30"></span></span><span>14:02</span></div>
+</div><span class="cap"><b>The icon states:</b> quiet, working (pulse), needs you (count), paused (dim), broken (red). Never animates when idle.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span style="font-weight:600">Otto</span><span style="margin-left:auto;font-size:11px;color:rgba(60,60,67,.6)">All tidy</span><span class="ssw" style="transform:scale(.85)"></span></div>
+<div class="msep"></div>
+<div class="msec">Today</div>
+<div class="mrow"><span style="color:#34C759">✓</span><span>Filed 3 screenshots</span><span class="fch" style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Atlas</span><span style="font-size:11px;color:#007AFF">↩</span></div>
+<div class="mrow"><span style="color:#34C759">✓</span><span>Filed 1 invoice</span><span class="fch" style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M1.5 5A1.5 1.5 0 0 1 3 3.5h3l1.5 2h5A1.5 1.5 0 0 1 14 7v4.5a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg> Finance</span><span style="font-size:11px;color:#007AFF">↩</span></div>
+<div class="msep"></div>
+<div class="mrow" style="color:rgba(60,60,67,.9)"><span>Settings…</span><span style="margin-left:auto;font-size:11px;color:rgba(60,60,67,.4)">⌘,</span></div>
+</div><span class="cap"><b>All tidy.</b> Master switch in the header; the log speaks in verbs + folder chips.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span style="font-weight:600">Otto</span><span class="sbdg warn" style="margin-left:auto">1 decision</span></div>
+<div class="msep"></div>
+<div class="scard">
+<div style="display:flex;align-items:center;gap:8px"><span class="hav" style="background:#3478f6">A</span><div style="display:flex;flex-direction:column"><span style="font-weight:600;font-size:12.5px">12 screenshots → Atlas › Screens</span><div style="display:flex;align-items:center;gap:6px;margin-top:2px"><div class="sprog" style="width:50px"><i style="width:92%;background:#34C759"></i></div><span class="sbtn lnk sm">why?</span></div></div></div>
+<div style="display:flex;gap:6px"><span class="sbtn sm" style="flex:1">Show me</span><span class="sbtn out sm">Skip</span></div>
+</div>
+<div class="mrow"><span style="width:18px;display:flex;justify-content:center;color:rgba(60,60,67,.6)"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.3 1.4"></path></svg></span><span style="font-size:12px;color:rgba(60,60,67,.75)">4 parked · asks again Fri</span><span style="margin-left:auto;color:rgba(60,60,67,.4)">›</span></div>
+<div class="msep"></div>
+<div class="mrow"><span style="font-size:11px;color:rgba(60,60,67,.55)">Nothing moves without you</span></div>
+</div><span class="cap"><b>A decision waits.</b> Confidence is a bar, the reason is one tap away, parked items self-mute.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span class="hdot pulse" style="background:#007AFF"></span><span style="font-weight:600">Sorting 3 in Downloads</span></div>
+<div class="scard" style="gap:5px">
+<div style="display:flex;align-items:center;gap:7px;font-size:12px"><span class="hdot" style="background:#007AFF;width:5px;height:5px"></span><span>atlas-flow-v2.png</span><span style="margin-left:auto;font-size:10.5px;color:rgba(60,60,67,.5)">reading…</span></div>
+<div style="display:flex;align-items:center;gap:7px;font-size:12px;opacity:.55"><span class="hdot" style="background:rgba(0,0,0,.2);width:5px;height:5px"></span><span>Invoice 8841.pdf</span><span style="margin-left:auto;font-size:10.5px">queued</span></div>
+<div style="display:flex;align-items:center;gap:7px;font-size:12px;opacity:.55"><span class="hdot" style="background:rgba(0,0,0,.2);width:5px;height:5px"></span><span>setup.dmg</span><span style="margin-left:auto;font-size:10.5px">queued</span></div>
+</div>
+<div class="msep"></div>
+<div class="mrow"><span style="font-size:11px;color:rgba(60,60,67,.55)">Next sweep when your Mac is idle</span></div>
+</div><span class="cap"><b>Working, live.</b> Figma-style presence: where he is, what he's touching, right now.</span></div>
+</div>
+</section>
+
+<section class="ph sc" data-screen-label="04 The whisper bar">
+<div class="phd"><span class="pnum">04</span><h2 class="ptitle">The whisper bar</h2></div>
+<p class="psub">A transient pill above the Dock for things Otto is doing or just did. It never asks questions, shows one message at a time, and fades after four seconds. Clicking it opens the popover.</p>
+<div class="row">
+<div class="scr"><div class="wall sc" style="width:290px;height:96px;border-radius:10px"><div style="position:absolute;left:50%;bottom:10px;transform:translateX(-50%)"><div class="dbar" style="padding:7px 9px 7px 14px;gap:10px;white-space:nowrap"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.18)"><svg width="9" height="9" viewBox="0 0 10 10" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"></path></svg></span><span style="display:flex;gap:3px;align-items:center"><span style="width:3px;height:3px;border-radius:50%;background:#fff"></span><span style="width:3px;height:3px;border-radius:50%;background:#fff"></span><span style="width:3px;height:3px;border-radius:50%;background:#fff"></span><span style="width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.35)"></span><span style="width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.35)"></span><span style="width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.35)"></span></span><span style="font-size:11px;opacity:.7">3 of 6</span></div></div></div><span class="cap"><b>Working.</b> Dotted progress while a sweep runs. The cancel button stops it; nothing files.</span></div>
+<div class="scr"><div class="wall sc" style="width:290px;height:96px;border-radius:10px"><div style="position:absolute;left:50%;bottom:10px;transform:translateX(-50%)"><div class="dbar" style="padding:7px 9px 7px 14px;gap:10px;white-space:nowrap"><span style="font-weight:600;font-size:12.5px">Filed 3 screenshots</span><span class="fch" style="background:rgba(255,255,255,.14);color:#fff">Atlas</span><span style="display:inline-flex;align-items:center;height:24px;padding:0 11px;border-radius:999px;background:rgba(255,255,255,.16);font-size:12px;font-weight:500">Undo</span></div></div></div><span class="cap"><b>The receipt.</b> Verb, count, folder chip, Undo. Gone in four seconds.</span></div>
+<div class="scr"><div class="wall sc" style="width:290px;height:96px;border-radius:10px"><div style="position:absolute;left:50%;bottom:10px;transform:translateX(-50%)"><div class="dbar" style="padding:7px 9px 7px 14px;gap:10px;white-space:nowrap"><span style="font-size:12.5px;color:rgba(255,255,255,.85)">Screenshots now file themselves</span><span style="display:inline-flex;align-items:center;height:24px;padding:0 11px;border-radius:999px;background:rgba(255,255,255,.16);font-size:12px;font-weight:500">Change</span></div></div></div><span class="cap"><b>The FYI.</b> A rule was promoted; one escape hatch, no celebration.</span></div>
+</div>
+<p class="psub" style="margin:18px 0 0">Guardrails: only for events the user caused or can undo. Decisions never appear here. Off by default during screen sharing and presentations.</p>
+</section>
+<section class="ph sc" data-screen-label="05 When it goes wrong">
+<div class="phd"><span class="pnum">05</span><h2 class="ptitle">When it goes wrong</h2></div>
+<p class="psub">Errors are Otto's fault, recovery is one tap, and every repair visibly updates the model.</p>
+<div class="row">
+<div class="scr"><div class="nsm">
+<div class="mrow"><span style="color:#007AFF">↩</span><span style="font-weight:600">12 back on Desktop</span><span class="sbdg ok" style="margin-left:auto">done</span></div>
+<div class="msep"></div>
+<div class="mrow"><span style="font-size:12px;color:rgba(60,60,67,.75)">Stop filing screenshots?</span><span class="sbtn lnk sm" style="margin-left:auto">Yes</span><span class="sbtn lnk sm">Just this once</span></div>
+</div><span class="cap"><b>Undo:</b> instant, then one question, then silence.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span class="hav" style="background:#3478f6;width:20px;height:20px;font-size:9px">O</span><span style="font-weight:600">Noticed — you moved it back</span></div>
+<div class="mrow" style="padding-top:0"><span style="font-size:12px;color:rgba(60,60,67,.75)">invoice_q3 stays in Downloads. Rule updated.</span></div>
+<div class="mrow" style="padding-top:0"><div class="sprog" style="width:50px"><i style="width:58%;background:#FF9F0A"></i></div><span style="font-size:11px;color:rgba(60,60,67,.55)">confidence ↓</span></div>
+</div><span class="cap"><b>Silent correction.</b> You fix it in Finder; Otto sees it, adapts, says so once.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span class="hdot" style="background:#FF9F0A"></span><span style="font-weight:600">I got 2 wrong this week</span></div>
+<div class="mrow" style="padding-top:0"><span style="font-size:12px;color:rgba(60,60,67,.75)">Screenshots: back to asking first.</span></div>
+<div class="mrow"><span class="sbdg">auto → asks</span><span class="sbtn lnk sm" style="margin-left:auto">See the 2</span></div>
+</div><span class="cap"><b>Self-demotion.</b> The rule steps down the ladder on its own.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span class="hdot" style="background:#FF3B30"></span><span style="font-weight:600">Atlas folder is gone</span></div>
+<div class="mrow" style="padding-top:0"><span style="font-size:12px;color:rgba(60,60,67,.75)">Renamed or deleted. 3 moves on hold.</span></div>
+<div class="mrow"><span class="sbtn out sm">Show me where</span><span class="sbtn lnk sm" style="margin-left:auto">Forget Atlas</span></div>
+</div><span class="cap"><b>Broken destination.</b> Work held safely, one question, a clean way out.</span></div>
+</div>
+</section>
+
+<section class="ph sc" data-screen-label="06 Growing trust">
+<div class="phd"><span class="pnum">06</span><h2 class="ptitle">Growing trust</h2></div>
+<p class="psub">Autonomy is offered, never taken. It is earned per category and shown as progress, not prose.</p>
+<div class="row">
+<div class="scr"><div class="nsm">
+<div class="mrow"><span style="font-weight:600">Make it a rule?</span><span class="sbdg" style="margin-left:auto">12 accepts in a row</span></div>
+<div class="scard" style="flex-direction:row;align-items:center">
+<div style="position:relative;width:32px;height:32px;flex:none"><svg width="32" height="32" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="3"></circle><circle cx="17" cy="17" r="14" fill="none" stroke="#007AFF" stroke-width="3" stroke-linecap="round" stroke-dasharray="88 88" transform="rotate(-90 17 17)"></circle></svg><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700">12/12</span></div>
+<div style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:600;font-size:12.5px">Screenshots → Atlas</span><span style="font-size:11px;color:rgba(60,60,67,.6)">I'd handle these myself</span></div>
+</div>
+<div class="mrow"><span class="sbtn sm" style="flex:1">Make it a rule</span><span class="sbtn sec sm">Keep asking</span></div>
+</div><span class="cap"><b>The offer.</b> Goal ring full, scope explicit, both answers respectable.</span></div>
+<div class="scr"><div class="win" style="width:420px">
+<div class="wtb"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span class="wtt">Otto</span></div>
+<div style="display:flex;border-top:.5px solid rgba(0,0,0,.1)">
+<div style="width:110px;padding:9px;background:rgba(0,0,0,.03);border-right:.5px solid rgba(0,0,0,.08);display:flex;flex-direction:column;gap:2px;font-size:12px">
+<span style="padding:3px 8px">General</span>
+<span style="padding:3px 8px">Folders</span>
+<span style="padding:3px 8px;border-radius:6px;background:#007AFF;color:#fff;font-weight:500">Rules</span>
+<span style="padding:3px 8px">History</span>
+</div>
+<div style="flex:1;padding:10px;display:flex;flex-direction:column;gap:8px">
+<div class="scard" style="flex-direction:row;align-items:center;margin:0"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:600;font-size:12.5px">Screenshots → Atlas</span><span style="font-size:11px;color:rgba(60,60,67,.6)">41 filed · 0 undone</span></div><span class="sbdg" style="background:rgba(0,122,255,.12);color:#0a63c9">auto</span></div>
+<div class="scard" style="flex-direction:row;align-items:center;margin:0"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:600;font-size:12.5px">Installers → Archive</span><span style="font-size:11px;color:rgba(60,60,67,.6)">7 days old or more</span></div><span class="sbdg" style="background:rgba(0,122,255,.12);color:#0a63c9">auto</span></div>
+<div class="scard" style="flex-direction:row;align-items:center;margin:0"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:600;font-size:12.5px">Documents</span><span style="font-size:11px;color:rgba(60,60,67,.6)">8 more accepts</span></div><div class="sprog" style="width:44px"><i style="width:33%"></i></div></div>
+<div class="scard" style="flex-direction:row;align-items:center;margin:0"><div style="display:flex;align-items:center;gap:7px;flex:1"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3.5" y="7.5" width="9" height="6" rx="1.5"></rect><path d="M5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"></path></svg><span style="font-weight:600;font-size:12.5px">Sensitive files</span></div><span class="sbdg warn">always asks</span></div>
+</div>
+</div>
+</div><span class="cap"><b>Rules pane.</b> Trust per category; the locked row keeps the boundary visible.</span></div>
+<div class="scr"><div class="nsm">
+<div class="mrow"><span class="hav" style="background:#3478f6">O</span><div style="display:flex;flex-direction:column"><span style="font-weight:600">Your week, from Otto</span><span style="font-size:10.5px;color:rgba(60,60,67,.55)">Mon 13 – Sun 19 Jul</span></div></div>
+<div class="msep"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 10px">
+<div style="display:flex;flex-direction:column"><span style="font-size:20px;font-weight:700">86</span><span style="font-size:10.5px;color:rgba(60,60,67,.6)">files filed</span></div>
+<div style="display:flex;flex-direction:column"><span style="font-size:20px;font-weight:700">7</span><span style="font-size:10.5px;color:rgba(60,60,67,.6)">projects tended</span></div>
+<div style="display:flex;flex-direction:column"><span style="font-size:20px;font-weight:700">6<span style="font-size:12px;font-weight:500;color:rgba(60,60,67,.6)">/7</span></span><span style="font-size:10.5px;color:rgba(60,60,67,.6)">days Desktop clear</span></div>
+<div style="display:flex;flex-direction:column"><span style="font-size:20px;font-weight:700">≈47<span style="font-size:12px;font-weight:500;color:rgba(60,60,67,.6)">m</span></span><span style="font-size:10.5px;color:rgba(60,60,67,.6)">saved · estimate</span></div>
+</div>
+<div class="scard" style="flex-direction:row;align-items:center"><span style="font-size:12px"><b>4 files</b> set aside for you</span><span class="sbtn lnk sm" style="margin-left:auto">Review</span></div>
+</div><span class="cap"><b>The werkbriefje.</b> Big numbers, one action, an honest estimate: the renewal case in a glance.</span></div>
+<div class="scr"><div style="display:flex;flex-direction:column;gap:10px">
+<div class="nsm">
+<div class="mrow"><span style="font-weight:600">30 days with Otto</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 10px">
+<div style="display:flex;flex-direction:column"><span style="font-size:20px;font-weight:700">312</span><span style="font-size:10.5px;color:rgba(60,60,67,.6)">files filed</span></div>
+<div style="display:flex;flex-direction:column"><span style="font-size:20px;font-weight:700">≈3<span style="font-size:12px;font-weight:500">h</span></span><span style="font-size:10.5px;color:rgba(60,60,67,.6)">saved</span></div>
+</div>
+<div class="mrow" style="flex-direction:column;align-items:stretch;gap:5px"><span class="sbtn sm">Keep Otto · €3/mo</span><span class="sbtn lnk sm" style="align-self:center">Not now</span></div>
+</div>
+<div class="nsm">
+<div class="mrow"><span class="hdot" style="background:rgba(0,0,0,.25)"></span><span style="font-weight:600">Otto is resting</span></div>
+<div class="mrow" style="padding-top:0"><span style="font-size:12px;color:rgba(60,60,67,.75)">Still watching, no longer filing. Rules and undo history are safe.</span></div>
+<div class="mrow"><span class="sbtn sec sm" style="flex:1">Wake him up</span></div>
+</div>
+</div><span class="cap"><b>The ask &amp; the decline.</b> His numbers make the case; saying no deletes nothing.</span></div>
+</div>
+</section>
+
+<section class="ph sc" data-screen-label="07 Settings">
+<div class="phd"><span class="pnum">07</span><h2 class="ptitle">Settings: trust by exit</h2></div>
+<p class="psub">Everything Otto is allowed to do, and the door out, in one honest pane.</p>
+<div class="row">
+<div class="scr"><div class="win" style="width:420px">
+<div class="wtb"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span class="wtt">Otto</span></div>
+<div style="display:flex;border-top:.5px solid rgba(0,0,0,.1)">
+<div style="width:110px;padding:9px;background:rgba(0,0,0,.03);border-right:.5px solid rgba(0,0,0,.08);display:flex;flex-direction:column;gap:2px;font-size:12px">
+<span style="padding:3px 8px;border-radius:6px;background:#007AFF;color:#fff;font-weight:500">General</span>
+<span style="padding:3px 8px">Folders</span>
+<span style="padding:3px 8px">Rules</span>
+<span style="padding:3px 8px">History</span>
+</div>
+<div style="flex:1;padding:10px;display:flex;flex-direction:column;gap:8px">
+<div class="scard" style="margin:0;gap:0;padding:0">
+<div style="display:flex;align-items:center;gap:10px;padding:9px 11px"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:500;font-size:12.5px">Tend quietly</span><span style="font-size:11px;color:rgba(60,60,67,.6)">Only sweep when the Mac is idle</span></div><span class="ssw"></span></div>
+<div style="height:.5px;background:rgba(0,0,0,.08)"></div>
+<div style="display:flex;align-items:center;gap:10px;padding:9px 11px"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:500;font-size:12.5px">Weekly note</span><span style="font-size:11px;color:rgba(60,60,67,.6)">Friday, 16:00</span></div><span class="ssw"></span></div>
+<div style="height:.5px;background:rgba(0,0,0,.08)"></div>
+<div style="display:flex;align-items:center;gap:10px;padding:9px 11px"><span style="font-weight:500;font-size:12.5px;flex:1">Sounds</span><span class="ssw off"></span></div>
+</div>
+<div class="scard" style="margin:0;gap:0;padding:0">
+<div style="display:flex;align-items:center;gap:10px;padding:9px 11px"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:500;font-size:12.5px">Pause Otto</span><span style="font-size:11px;color:rgba(60,60,67,.6)">Until 5 pm · tomorrow · manually</span></div><span class="sbtn out sm">Pause…</span></div>
+<div style="height:.5px;background:rgba(0,0,0,.08)"></div>
+<div style="display:flex;align-items:center;gap:10px;padding:9px 11px"><div style="display:flex;flex-direction:column;flex:1;gap:1px"><span style="font-weight:500;font-size:12.5px">Everything Otto knows</span><span style="font-size:11px;color:rgba(60,60,67,.6)">Rules, examples, history. All on this Mac</span></div><span class="sbtn des sm">Erase</span></div>
+</div>
+</div>
+</div>
+</div><span class="cap"><b>General.</b> The nuclear option is visible, not buried.</span></div>
+</div>
+</section>
+</x-dc>
+</body>
+</html>
