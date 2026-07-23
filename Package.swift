@@ -57,7 +57,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Tydly",
-            dependencies: ["TydlyCore", "TydlyAI"],
+            dependencies: ["TydlyCore", "TydlyAI", "TydlyPersistence"],
             // Info.plist / entitlements live beside the sources but are not Swift sources
             // or bundle resources — the linker flag below embeds the plist, and the app
             // bundle script copies both. Excluding them keeps `swift build` warning-free.
@@ -76,7 +76,9 @@ let package = Package(
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",
                     "-Xlinker", "__info_plist",
-                    "-Xlinker", "Sources/Tydly/Info.plist"
+                    "-Xlinker", "Sources/Tydly/Info.plist",
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@executable_path/../Frameworks"
                 ])
             ]
         ),

@@ -33,6 +33,9 @@ reject_key() {
 
 require_true "com.apple.security.app-sandbox" "$DECLARED_ENTITLEMENTS"
 require_true "com.apple.security.files.user-selected.read-write" "$DECLARED_ENTITLEMENTS"
+/usr/libexec/PlistBuddy \
+	-c "Print :com.apple.application-identifier" \
+	"$DECLARED_ENTITLEMENTS" >/dev/null
 reject_key "com.apple.security.network.client" "$DECLARED_ENTITLEMENTS"
 reject_key "com.apple.security.network.server" "$DECLARED_ENTITLEMENTS"
 
@@ -53,6 +56,15 @@ codesign -d --entitlements :- "$APP" >"$RUNTIME_ENTITLEMENTS" 2>/dev/null
 
 require_true "com.apple.security.app-sandbox" "$RUNTIME_ENTITLEMENTS"
 require_true "com.apple.security.files.user-selected.read-write" "$RUNTIME_ENTITLEMENTS"
+APPLICATION_IDENTIFIER="$(
+	/usr/libexec/PlistBuddy \
+		-c "Print :com.apple.application-identifier" \
+		"$RUNTIME_ENTITLEMENTS"
+)"
+if [[ -z "$APPLICATION_IDENTIFIER" ]]; then
+	echo "error: signed app has no application identifier for Keychain isolation" >&2
+	exit 1
+fi
 reject_key "com.apple.security.network.client" "$RUNTIME_ENTITLEMENTS"
 reject_key "com.apple.security.network.server" "$RUNTIME_ENTITLEMENTS"
 
@@ -63,5 +75,7 @@ if [[ "$MINIMUM_SYSTEM_VERSION" != "26.0" ]]; then
 	echo "error: expected LSMinimumSystemVersion=26.0, got $MINIMUM_SYSTEM_VERSION" >&2
 	exit 1
 fi
+
+"$APP/Contents/MacOS/Tydly" --verify-local-security
 
 echo "Privacy audit passed for $APP"

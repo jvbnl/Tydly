@@ -113,6 +113,96 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         try await ledger.close()
     }
 
+    func testCapabilityLossKeepsPreparedOperationResumable() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let ledger = try fixture.openLedger()
+        try await fixture.registerRoots(in: ledger)
+        let draft = try fixture.moveDraft()
+        _ = try await ledger.prepareBatch(id: draft.batchID, operations: [draft])
+
+        let action = try await ledger.reconcile(
+            operationID: draft.id,
+            observation: .capabilityUnavailable
+        )
+        let operation = try await ledger.operation(id: draft.id)
+        let batch = try await ledger.batch(id: draft.batchID)
+        XCTAssertEqual(action, .holdForRepair(.capabilityUnavailable))
+        XCTAssertEqual(operation?.phase, .prepared)
+        XCTAssertNil(operation?.repairReason)
+        XCTAssertEqual(batch?.status, .active)
+
+        let resumed = try await ledger.reconcile(
+            operationID: draft.id,
+            observation: .matchingSourceOnly
+        )
+        XCTAssertEqual(resumed, .retryMutation)
+        try await ledger.close()
+    }
+
+    func testRootGenerationCannotBeRetargeted() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let ledger = try fixture.openLedger()
+        try await ledger.registerRoot(id: "desktop", bookmark: Data("desktop".utf8))
+        try await ledger.registerRoot(id: "desktop", bookmark: Data("desktop".utf8))
+
+        do {
+            try await ledger.registerRoot(id: "desktop", bookmark: Data("other".utf8))
+            XCTFail("an existing root ID must remain immutable")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .rootMutationRejected)
+        }
+        try await ledger.close()
+    }
+
+    func testDestinationIdentityCanOnlyBeWrittenOnAppliedTransition() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let ledger = try fixture.openLedger()
+        try await fixture.registerRoots(in: ledger)
+        let draft = try fixture.moveDraft()
+        let destinationIdentity = try fixture.destinationIdentity()
+        _ = try await ledger.prepareBatch(id: draft.batchID, operations: [draft])
+        _ = try await ledger.transition(
+            operationID: draft.id,
+            to: .applied,
+            observedDestinationIdentity: destinationIdentity
+        )
+
+        do {
+            _ = try await ledger.transition(
+                operationID: draft.id,
+                to: .committed,
+                observedDestinationIdentity: draft.expectedSourceIdentity
+            )
+            XCTFail("commit must not rewrite destination identity")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .destinationIdentityIsImmutable)
+        }
+        let operation = try await ledger.operation(id: draft.id)
+        XCTAssertEqual(operation?.phase, .applied)
+        XCTAssertEqual(operation?.observedDestinationIdentity, destinationIdentity)
+        try await ledger.close()
+    }
+
+    func testExistingDatabaseNeverGeneratesReplacementKey() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let ledger = try fixture.openLedger()
+        try await ledger.close()
+        try fixture.keyStore.deleteKey()
+
+        XCTAssertThrowsError(try fixture.openLedger()) { error in
+            XCTAssertEqual(error as? LedgerStoreError, .encryptionKeyUnavailable)
+        }
+        XCTAssertNil(try fixture.keyStore.loadExistingKey())
+    }
+
     func testCommittedInverseMarksOriginalBatchUndone() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

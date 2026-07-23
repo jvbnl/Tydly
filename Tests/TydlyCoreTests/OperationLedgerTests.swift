@@ -137,4 +137,68 @@ final class OperationLedgerTests: XCTestCase {
             XCTAssertEqual($0 as? LedgerValidationError, .negativeOrdinal)
         }
     }
+
+    func testOperationDraftRequiresConsistentInverseAndAuthorization() throws {
+        let identity = try LedgerFileIdentity(
+            volumeID: "volume",
+            fileID: "file",
+            byteCount: 42,
+            modifiedAt: Date(timeIntervalSince1970: 1),
+            fingerprint: "fingerprint"
+        )
+        let source = try ScopedRelativePath(rawValue: "shot.png")
+        let destination = try ScopedRelativePath(rawValue: "Screens/shot.png")
+
+        XCTAssertThrowsError(
+            try LedgerOperationDraft(
+                id: "move",
+                batchID: "batch",
+                ordinal: 0,
+                kind: .move,
+                sourceRootID: "desktop",
+                sourcePath: source,
+                destinationRootID: "atlas",
+                destinationPath: destination,
+                expectedSourceIdentity: identity,
+                reversesOperationID: "other",
+                authorization: .userApproval(planDigest: "plan")
+            )
+        ) {
+            XCTAssertEqual($0 as? LedgerValidationError, .invalidInverseReference)
+        }
+
+        XCTAssertThrowsError(
+            try LedgerOperationDraft(
+                id: "noop",
+                batchID: "batch",
+                ordinal: 0,
+                kind: .move,
+                sourceRootID: "desktop",
+                sourcePath: source,
+                destinationRootID: "desktop",
+                destinationPath: source,
+                expectedSourceIdentity: identity,
+                authorization: .userApproval(planDigest: "plan")
+            )
+        ) {
+            XCTAssertEqual($0 as? LedgerValidationError, .identicalSourceAndDestination)
+        }
+
+        XCTAssertThrowsError(
+            try LedgerOperationDraft(
+                id: "unauthorized",
+                batchID: "batch",
+                ordinal: 0,
+                kind: .move,
+                sourceRootID: "desktop",
+                sourcePath: source,
+                destinationRootID: "atlas",
+                destinationPath: destination,
+                expectedSourceIdentity: identity,
+                authorization: .userApproval(planDigest: "")
+            )
+        ) {
+            XCTAssertEqual($0 as? LedgerValidationError, .invalidAuthorization)
+        }
+    }
 }
