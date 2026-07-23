@@ -21,6 +21,10 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Audit signed debug app
+        run: |
+          CONFIGURATION=debug ./Scripts/build_app.sh
+          ./Scripts/audit_privacy.sh
       - name: Assemble app bundle
         run: make app
       - name: Audit privacy boundary
