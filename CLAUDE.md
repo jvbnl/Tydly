@@ -35,9 +35,9 @@ These are enforced in `Sources/TydlyCore/Rules.swift` and pinned by `Tests/Tydly
 - **macOS 26 on Apple silicon.** The owner approved raising the minimum so semantic
   classification can use Apple's on-device Foundation Models framework. Swift 6.2 and the
   macOS 26 SDK are required; no cloud fallback is allowed.
-- **Four targets.** `TydlyCore` (pure policy + path-free contracts), `TydlyAI` (tool-free
-  local model adapter), `TydlyPersistence` (encrypted operation ledger), and `Tydly`
-  (macOS SwiftUI/AppKit UI). Keep UI-agnostic logic in Core and English in Localization.
+- **Five targets.** `TydlyCore` (pure policy), `TydlyAI` (tool-free local model),
+  `TydlyPersistence` (encrypted ledger), `TydlyMacEngine` (scoped macOS capabilities), and
+  `Tydly` (SwiftUI/AppKit UI). Keep UI-agnostic logic in Core and English in Localization.
 - **`MenuBarExtra` (`.window` style)** for icon + popover; a thin AppKit `AppDelegate` owns
   windows/panels that sit outside the scene (onboarding now; whisper `NSPanel` next).
 - **Menu-bar glyph** is a programmatically rendered *template* `NSImage` (`MenuGlyph`) so
@@ -46,6 +46,10 @@ These are enforced in `Sources/TydlyCore/Rules.swift` and pinned by `Tests/Tydly
   the SQLCipher prepare-before-mutation ledger, recovery matrix, inverse undo records,
   encrypted backups, and quarantine. Security-scoped root generations and the race-safe
   mover must use this substrate; FSEvents remains only a rescan hint.
+- **Capabilities before files.** `TydlyMacEngine` captures Desktop/Downloads through
+  atomic Powerbox selection, encrypted immutable bookmark generations, ledger-wide CAS,
+  complete policy/identity revalidation, and closure-scoped balanced access. No watcher or
+  mover may bypass this store or persist a resolved absolute path.
 - **AI is advisory.** `TydlyAI` receives bounded path-free evidence and candidate IDs, has no
   tools, and returns allowlisted IDs only. Deterministic `TydlyCore` policy owns sensitivity,
   consent, autonomy, resting mode, confidence, execution, and undo. See

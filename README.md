@@ -28,12 +28,13 @@ popover (all tidy / decision / working) → onboarding.**
 | The 10 product rules encoded + unit-tested in `TydlyCore` | ✅ |
 | Security-first execution policy + local Foundation Models boundary | ✅ foundation |
 | Encrypted operation ledger, inverse undo records, and crash reconciliation | ✅ foundation |
+| Encrypted security-scoped Desktop/Downloads capability generations | ✅ foundation |
 | Finder demonstration, whisper bar, error states, rules pane, settings, weekly note | ⏳ next |
-| Real file engine (FSEvents, security-scoped bookmarks, race-safe moves) | ⏳ next |
+| Real file engine (FSEvents, extraction, race-safe moves) | ⏳ next |
 
-There is **no file mover yet** — state is seeded from `SampleData` so every screen renders
-the real design. The encrypted ledger can durably prepare and reconcile operation intent,
-but nothing in the app invokes a filesystem mutation.
+There is **no watcher or file mover yet** — state remains seeded from `SampleData`. The
+encrypted ledger can reconcile intent and onboarding can persist least-privilege folder
+grants, but nothing inventories or mutates user files.
 
 ## Requirements
 
@@ -64,7 +65,7 @@ switcher at the foot of the popover: **All tidy · Decision · Working · Observ
 
 ## Architecture
 
-Four targets keep policy testable and prevent the model from receiving filesystem powers:
+Five targets keep policy testable and prevent the model from receiving filesystem powers:
 
 - **`TydlyCore`** — pure Foundation. Domain types (`AgentState`, `FilingRule`, `Decision`,
   …), path-free AI contracts, and rule/execution policy. No SwiftUI, AppKit, or Combine.
@@ -74,6 +75,8 @@ Four targets keep policy testable and prevent the model from receiving filesyste
   records authorization, relative-path intent, transitions, inverse undo, and repair state,
   but owns no move API. Authorization is bound to the exact batch digest and authenticated
   with a ledger-key-derived HMAC; unresolved repair blocks all new mutation intent.
+- **`TydlyMacEngine`** — immutable bookmark generations, fail-closed root policy, and
+  closure-scoped balanced access. It contains no watcher or mover yet.
 - **`Tydly`** — the macOS executable. SwiftUI `MenuBarExtra` for the icon + popover, a thin
   AppKit `AppDelegate` for the floating onboarding window, `AppModel` (`ObservableObject`)
   wrapping the core.
@@ -83,6 +86,7 @@ Sources/
   TydlyCore/         AgentState · Domain · Rules · AIContracts · ExecutionPolicy · SampleData
   TydlyAI/           FoundationModelClassifier
   TydlyPersistence/  DatabaseKeyStore · EncryptedOperationLedger · quarantine
+  TydlyMacEngine/    Bookmark adapters · root policy · capability store
   Tydly/
     TydlyApp.swift            @main, MenuBarExtra scene
     AppDelegate.swift         onboarding window (whisper bar later)
@@ -96,6 +100,7 @@ Tests/
   TydlyCoreTests/             Rules · State · ExecutionPolicy
   TydlyAITests/               Allowlist · sensitivity · prompt-boundary validation
   TydlyPersistenceTests/      Encryption · recovery · inverse undo · backup · quarantine
+  TydlyMacEngineTests/        Policy · atomic selection · stale/revoked access · CAS
 ```
 
 ### Privacy is structural
@@ -112,6 +117,10 @@ immutable revisions. Its 256-bit key is nonsynchronizing. Production defaults to
 Protection Keychain and requires a provisioned signing identity; ad-hoc CI verifies local
 Keychain plumbing separately because it cannot impersonate Apple's restricted access group.
 
+Desktop and Downloads are selected through separate `NSOpenPanel` Powerbox grants and
+committed atomically. Bookmarks resolve without UI, mounting, or path fallback. Local,
+non-provider, non-overlapping policy and immutable identity are rechecked on every use.
+
 ## The ten non-negotiable rules
 
 They live as code in `TydlyCore` (see `Rules.swift`) and are pinned by tests
@@ -124,7 +133,7 @@ skipped decisions self-mute. The full list is in `DesignHandoff/CLAUDE.md` and t
 
 ## Note on the build environment
 
-The package is verified by an Apple-silicon macOS 26 runner: `swift build`, the Core and AI
-policy tests, signed release app assembly, privacy audit, and a detached app-bundle launch.
-Interactive menu-bar behavior and pixel fidelity still need checking on a logged-in Mac
-with `make run`.
+The package is verified by an Apple-silicon macOS 26 runner: `swift build`, 68 Core/AI/
+persistence/capability tests, abrupt-process recovery probes, signed release app assembly,
+privacy audit, and a detached app-bundle launch. Powerbox behavior, menu-bar interaction,
+and pixel fidelity still need checking on a logged-in Mac with `make run`.
