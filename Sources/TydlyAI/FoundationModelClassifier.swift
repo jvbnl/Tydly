@@ -85,7 +85,7 @@ public actor FoundationModelClassifier: LocalClassificationEngine {
         let response = try await session.respond(
             to: Prompt(PromptComposer.compose(request)),
             generating: ModelClassification.self,
-            options: GenerationOptions(samplingMode: .greedy)
+            options: GenerationOptions(sampling: .greedy)
         )
 
         return OutputValidator.validate(response.content, for: request)
