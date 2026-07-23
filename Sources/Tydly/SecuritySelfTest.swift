@@ -7,9 +7,11 @@ import TydlyPersistence
 /// restricted keychain entitlement.
 enum SecuritySelfTest {
     static let argument = "--verify-local-security"
+    static let dataProtectionArgument = "--verify-data-protection-keychain"
 
     static func runIfRequested() {
-        guard CommandLine.arguments.contains(argument) else {
+        let verifyDataProtection = CommandLine.arguments.contains(dataProtectionArgument)
+        guard verifyDataProtection || CommandLine.arguments.contains(argument) else {
             return
         }
 
@@ -18,7 +20,7 @@ enum SecuritySelfTest {
             account: "ephemeral-key",
             // Ad-hoc CI signatures cannot carry Apple's provisioned Data Protection
             // Keychain access group. Release validation exercises the default `true` path.
-            useDataProtectionKeychain: false
+            useDataProtectionKeychain: verifyDataProtection
         )
         do {
             defer { try? store.deleteKey() }

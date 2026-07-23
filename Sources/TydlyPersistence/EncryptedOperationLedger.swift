@@ -472,7 +472,7 @@ public actor EncryptedOperationLedger {
 
     public func schemaVersion() throws -> Int {
         try database.read { db in
-            try Int.fetchOne(db, sql: "PRAGMA user_version") ?? 0
+            try Self.migrator.appliedMigrations(db).count
         }
     }
 
@@ -629,7 +629,6 @@ public actor EncryptedOperationLedger {
                     ON operations(destinationRootID, destinationRelativePath)
                     WHERE phase IN ('prepared', 'applied');
 
-                PRAGMA user_version = 1;
                 """)
         }
         return migrator

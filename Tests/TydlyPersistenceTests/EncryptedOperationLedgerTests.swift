@@ -189,6 +189,41 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         try await ledger.close()
     }
 
+    func testActiveResourcesCannotBeReservedTwice() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let ledger = try fixture.openLedger()
+        try await fixture.registerRoots(in: ledger)
+        let first = try fixture.moveDraft()
+        _ = try await ledger.prepareBatch(id: first.batchID, operations: [first])
+        let conflicting = try LedgerOperationDraft(
+            id: "move-2",
+            batchID: "batch-2",
+            ordinal: 0,
+            kind: .move,
+            sourceRootID: first.destinationRootID,
+            sourcePath: first.destinationPath,
+            destinationRootID: first.sourceRootID,
+            destinationPath: try ScopedRelativePath(rawValue: "other.png"),
+            expectedSourceIdentity: try fixture.destinationIdentity(),
+            authorization: .userApproval(planDigest: "other-plan")
+        )
+
+        do {
+            _ = try await ledger.prepareBatch(
+                id: conflicting.batchID,
+                operations: [conflicting]
+            )
+            XCTFail("active destination must not be reserved as another source")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .activeResourceConflict)
+        }
+        let conflictingBatch = try await ledger.batch(id: conflicting.batchID)
+        XCTAssertNil(conflictingBatch)
+        try await ledger.close()
+    }
+
     func testExistingDatabaseNeverGeneratesReplacementKey() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

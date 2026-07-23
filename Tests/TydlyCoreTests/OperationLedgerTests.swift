@@ -111,6 +111,56 @@ final class OperationLedgerTests: XCTestCase {
         }
     }
 
+    func testEveryRecoveryPhaseObservationPairIsPinned() {
+        let cases: [
+            (LedgerOperationPhase, FileSystemObservation, LedgerRecoveryAction)
+        ] = [
+            (.prepared, .matchingSourceOnly, .retryMutation),
+            (.prepared, .matchingDestinationOnly, .markApplied),
+            (.prepared, .matchingSourceAndDestination, .holdForRepair(.ambiguousPresence)),
+            (.prepared, .neitherPresent, .holdForRepair(.ambiguousPresence)),
+            (.prepared, .conflictingDestination, .holdForRepair(.destinationConflict)),
+            (.prepared, .capabilityUnavailable, .holdForRepair(.capabilityUnavailable)),
+
+            (.applied, .matchingSourceOnly, .retryMutation),
+            (.applied, .matchingDestinationOnly, .markCommitted),
+            (.applied, .matchingSourceAndDestination, .holdForRepair(.ambiguousPresence)),
+            (.applied, .neitherPresent, .holdForRepair(.missingCommittedItem)),
+            (.applied, .conflictingDestination, .holdForRepair(.destinationConflict)),
+            (.applied, .capabilityUnavailable, .holdForRepair(.capabilityUnavailable)),
+
+            (.committed, .matchingSourceOnly, .holdForRepair(.terminalStateMismatch)),
+            (.committed, .matchingDestinationOnly, .none),
+            (.committed, .matchingSourceAndDestination, .holdForRepair(.terminalStateMismatch)),
+            (.committed, .neitherPresent, .holdForRepair(.missingCommittedItem)),
+            (.committed, .conflictingDestination, .holdForRepair(.destinationConflict)),
+            (.committed, .capabilityUnavailable, .holdForRepair(.capabilityUnavailable)),
+
+            (.aborted, .matchingSourceOnly, .none),
+            (.aborted, .matchingDestinationOnly, .holdForRepair(.terminalStateMismatch)),
+            (.aborted, .matchingSourceAndDestination, .holdForRepair(.terminalStateMismatch)),
+            (.aborted, .neitherPresent, .holdForRepair(.terminalStateMismatch)),
+            (.aborted, .conflictingDestination, .holdForRepair(.destinationConflict)),
+            (.aborted, .capabilityUnavailable, .holdForRepair(.capabilityUnavailable)),
+
+            (.needsRepair, .matchingSourceOnly, .none),
+            (.needsRepair, .matchingDestinationOnly, .none),
+            (.needsRepair, .matchingSourceAndDestination, .none),
+            (.needsRepair, .neitherPresent, .none),
+            (.needsRepair, .conflictingDestination, .holdForRepair(.destinationConflict)),
+            (.needsRepair, .capabilityUnavailable, .holdForRepair(.capabilityUnavailable))
+        ]
+
+        XCTAssertEqual(cases.count, 30)
+        for (phase, observation, expected) in cases {
+            XCTAssertEqual(
+                LedgerRecovery.action(phase: phase, observation: observation),
+                expected,
+                "\(phase) / \(observation)"
+            )
+        }
+    }
+
     func testOperationDraftRejectsNegativeOrdinal() throws {
         let identity = try LedgerFileIdentity(
             volumeID: "volume",
