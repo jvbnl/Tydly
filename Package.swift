@@ -22,6 +22,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "Tydly", targets: ["Tydly"]),
+        .executable(name: "TydlyLedgerCrashProbe", targets: ["TydlyLedgerCrashProbe"]),
         .library(name: "TydlyCore", targets: ["TydlyCore"]),
         .library(name: "TydlyAI", targets: ["TydlyAI"]),
         .library(name: "TydlyPersistence", targets: ["TydlyPersistence"])
@@ -54,6 +55,10 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Security")
             ]
+        ),
+        .executableTarget(
+            name: "TydlyLedgerCrashProbe",
+            dependencies: ["TydlyCore", "TydlyPersistence"]
         ),
         .executableTarget(
             name: "Tydly",

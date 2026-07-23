@@ -28,6 +28,7 @@ open: app
 
 test:
 	swift test
+	./Scripts/test_ledger_crash_recovery.sh
 
 audit: app
 	./Scripts/audit_privacy.sh

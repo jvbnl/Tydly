@@ -20,7 +20,7 @@ jobs:
       - name: Build
         run: swift build
       - name: Test
-        run: swift test
+        run: make test
       - name: Audit signed debug app
         run: |
           CONFIGURATION=debug ./Scripts/build_app.sh
