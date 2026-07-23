@@ -96,6 +96,7 @@ public struct FilingRule: Identifiable, Equatable, Sendable {
     public var undoneCount: Int
     public var mistakesThisWeek: Int
     public internal(set) var isSensitive: Bool
+    public internal(set) var revision: Int
 
     public init(
         id: String,
@@ -108,7 +109,8 @@ public struct FilingRule: Identifiable, Equatable, Sendable {
         filedCount: Int = 0,
         undoneCount: Int = 0,
         mistakesThisWeek: Int = 0,
-        isSensitive: Bool = false
+        isSensitive: Bool = false,
+        revision: Int = 0
     ) {
         self.id = id
         self.name = name
@@ -121,6 +123,7 @@ public struct FilingRule: Identifiable, Equatable, Sendable {
         self.undoneCount = undoneCount
         self.mistakesThisWeek = mistakesThisWeek
         self.isSensitive = isSensitive
+        self.revision = max(0, revision)
     }
 }
 

@@ -134,7 +134,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             .authorizeUserApproval(
                 batchID: nextIntent.batchID,
                 intents: [nextIntent],
-                executionAuthorization: .approvedByUser
+                executionAuthorization: fixture.userApproval()
             )
         let nextDraft = try LedgerOperationDraft(
             intent: nextIntent,
@@ -191,7 +191,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             try authenticator.authorizeUserApproval(
                 batchID: intent.batchID,
                 intents: [intent],
-                executionAuthorization: .requiresConsent(.noPromotedRule)
+                executionAuthorization: fixture.requiresConsent()
             )
         ) {
             XCTAssertEqual($0 as? LedgerStoreError, .authorizationNotGranted)
@@ -298,7 +298,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         ).authorizeUserApproval(
             batchID: conflictingIntent.batchID,
             intents: [conflictingIntent],
-            executionAuthorization: .approvedByUser
+            executionAuthorization: fixture.userApproval()
         )
         let conflicting = try LedgerOperationDraft(
             intent: conflictingIntent,
@@ -365,7 +365,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             .authorizeUserApproval(
                 batchID: undoIntent.batchID,
                 intents: [undoIntent],
-                executionAuthorization: .approvedByUser
+                executionAuthorization: fixture.userApproval()
             )
         let undo = try LedgerOperationDraft(
             intent: undoIntent,
@@ -410,7 +410,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         ).authorizeUserApproval(
             batchID: invalidUndoIntent.batchID,
             intents: [invalidUndoIntent],
-            executionAuthorization: .approvedByUser
+            executionAuthorization: fixture.userApproval()
         )
         let invalidUndo = try LedgerOperationDraft(
             intent: invalidUndoIntent,
@@ -481,6 +481,19 @@ private struct Fixture {
         try await ledger.registerRoot(id: "atlas", bookmark: Data("atlas".utf8))
     }
 
+    func userApproval() -> ExecutionAuthorization {
+        Rules.authorizeUserApprovedExecution(subscription: .active)
+    }
+
+    func requiresConsent() -> ExecutionAuthorization {
+        Rules.authorizeAutomaticExecution(
+            rule: nil,
+            sensitivity: .clearedForCurrentFingerprint,
+            coverage: .complete,
+            subscription: .active
+        )
+    }
+
     func moveDraft() throws -> LedgerOperationDraft {
         let intent = try LedgerOperationIntent(
             id: "move-1",
@@ -497,7 +510,7 @@ private struct Fixture {
             .authorizeUserApproval(
                 batchID: intent.batchID,
                 intents: [intent],
-                executionAuthorization: .approvedByUser
+                executionAuthorization: userApproval()
             )
         return try LedgerOperationDraft(
             intent: intent,

@@ -87,49 +87,31 @@ final class ExecutionPolicyTests: XCTestCase {
     }
 
     func testRestingBlocksAutomaticAndExplicitExecution() {
-        XCTAssertEqual(
-            Rules.authorizeExecution(
-                rule: automaticRule,
-                sensitivity: .clearedForCurrentFingerprint,
-                coverage: .complete,
-                subscription: .resting,
-                userApproved: false
-            ),
-            .blockedWhileResting
+        let automatic = Rules.authorizeAutomaticExecution(
+            rule: automaticRule,
+            sensitivity: .clearedForCurrentFingerprint,
+            coverage: .complete,
+            subscription: .resting
         )
-        XCTAssertEqual(
-            Rules.authorizeExecution(
-                rule: automaticRule,
-                sensitivity: .clearedForCurrentFingerprint,
-                coverage: .complete,
-                subscription: .resting,
-                userApproved: true
-            ),
-            .blockedWhileResting
+        let explicit = Rules.authorizeUserApprovedExecution(
+            subscription: .resting
         )
+        XCTAssertEqual(automatic.kind, .blockedWhileResting)
+        XCTAssertEqual(explicit.kind, .blockedWhileResting)
     }
 
     func testSensitiveFilesRemainAskFirstButCanMoveAfterExplicitApproval() {
-        XCTAssertEqual(
-            Rules.authorizeExecution(
-                rule: automaticRule,
-                sensitivity: .sensitive,
-                coverage: .complete,
-                subscription: .active,
-                userApproved: false
-            ),
-            .requiresConsent(.sensitiveContent)
+        let automatic = Rules.authorizeAutomaticExecution(
+            rule: automaticRule,
+            sensitivity: .sensitive,
+            coverage: .complete,
+            subscription: .active
         )
-        XCTAssertEqual(
-            Rules.authorizeExecution(
-                rule: automaticRule,
-                sensitivity: .sensitive,
-                coverage: .complete,
-                subscription: .active,
-                userApproved: true
-            ),
-            .approvedByUser
+        let explicit = Rules.authorizeUserApprovedExecution(
+            subscription: .active
         )
+        XCTAssertEqual(automatic.kind, .requiresConsent(.sensitiveContent))
+        XCTAssertEqual(explicit.kind, .approvedByUser)
     }
 
     func testModelOutputCannotImplicitlyPromoteAutonomy() {
@@ -142,15 +124,32 @@ final class ExecutionPolicyTests: XCTestCase {
         )
 
         XCTAssertTrue(Rules.canOfferPromotion(proposingRule))
+        let authorization = Rules.authorizeAutomaticExecution(
+            rule: proposingRule,
+            sensitivity: .clearedForCurrentFingerprint,
+            coverage: .complete,
+            subscription: .active
+        )
+        XCTAssertEqual(authorization.kind, .requiresConsent(.noPromotedRule))
+    }
+
+    func testPromotedRuleCapabilityCarriesExactRuleRevision() {
+        let rule = FilingRule(
+            id: "screenshots",
+            name: "Screenshots",
+            kind: .screenshot,
+            autonomy: .auto,
+            revision: 7
+        )
+        let authorization = Rules.authorizeAutomaticExecution(
+            rule: rule,
+            sensitivity: .clearedForCurrentFingerprint,
+            coverage: .complete,
+            subscription: .active
+        )
         XCTAssertEqual(
-            Rules.authorizeExecution(
-                rule: proposingRule,
-                sensitivity: .clearedForCurrentFingerprint,
-                coverage: .complete,
-                subscription: .active,
-                userApproved: false
-            ),
-            .requiresConsent(.noPromotedRule)
+            authorization.kind,
+            .approvedByPromotedRule(ruleID: "screenshots", revision: 7)
         )
     }
 }

@@ -114,7 +114,9 @@ enum LedgerCrashProbe {
             .authorizeUserApproval(
                 batchID: intent.batchID,
                 intents: [intent],
-                executionAuthorization: .approvedByUser
+                executionAuthorization: Rules.authorizeUserApprovedExecution(
+                    subscription: .active
+                )
             )
         return try LedgerOperationDraft(
             intent: intent,

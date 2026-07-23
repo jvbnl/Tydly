@@ -17,7 +17,7 @@ public struct LedgerAuthorizationAuthenticator: Sendable {
         intents: [LedgerOperationIntent],
         executionAuthorization: ExecutionAuthorization
     ) throws -> LedgerAuthorization {
-        guard executionAuthorization == .approvedByUser else {
+        guard executionAuthorization.kind == .approvedByUser else {
             throw LedgerStoreError.authorizationNotGranted
         }
         let digest = try LedgerIntentDigest.digest(batchID: batchID, intents: intents)
@@ -37,13 +37,10 @@ public struct LedgerAuthorizationAuthenticator: Sendable {
     public func authorizePromotedRule(
         batchID: String,
         intents: [LedgerOperationIntent],
-        ruleID: String,
-        revision: Int,
         executionAuthorization: ExecutionAuthorization
     ) throws -> LedgerAuthorization {
-        guard executionAuthorization == .approvedByPromotedRule,
-              !ruleID.isEmpty,
-              revision >= 0 else {
+        guard case .approvedByPromotedRule(let ruleID, let revision)
+                = executionAuthorization.kind else {
             throw LedgerStoreError.authorizationNotGranted
         }
         let digest = try LedgerIntentDigest.digest(batchID: batchID, intents: intents)

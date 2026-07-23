@@ -11,13 +11,21 @@ public enum AutomaticFilingDenial: Equatable, Sendable {
     case noPromotedRule
 }
 
-/// The only two paths that may authorize a move. Operational validation and the durable
-/// journal still run after authorization and may stop execution.
-public enum ExecutionAuthorization: Equatable, Sendable {
+public enum ExecutionAuthorizationKind: Equatable, Sendable {
     case approvedByUser
-    case approvedByPromotedRule
+    case approvedByPromotedRule(ruleID: String, revision: Int)
     case requiresConsent(AutomaticFilingDenial)
     case blockedWhileResting
+}
+
+/// Opaque capability issued only by the deterministic policy gate. Model output and decoded
+/// data cannot directly construct an authorization value.
+public struct ExecutionAuthorization: Equatable, Sendable {
+    public let kind: ExecutionAuthorizationKind
+
+    fileprivate init(kind: ExecutionAuthorizationKind) {
+        self.kind = kind
+    }
 }
 
 public extension Rules {
@@ -67,21 +75,14 @@ public extension Rules {
         ) == nil
     }
 
-    /// Explicit approval authorizes ask-first items, including sensitive files. Sensitive
-    /// status is never converted into an automatic rule. Resting remains watch-only even if
-    /// stale UI tries to submit an approval.
-    static func authorizeExecution(
+    static func authorizeAutomaticExecution(
         rule: FilingRule?,
         sensitivity: SensitivityAssessment,
         coverage: EvidenceCoverage,
-        subscription: Subscription,
-        userApproved: Bool
+        subscription: Subscription
     ) -> ExecutionAuthorization {
         if subscription == .resting {
-            return .blockedWhileResting
-        }
-        if userApproved {
-            return .approvedByUser
+            return ExecutionAuthorization(kind: .blockedWhileResting)
         }
         if let denial = automaticFilingDenial(
             rule: rule,
@@ -89,8 +90,25 @@ public extension Rules {
             coverage: coverage,
             subscription: subscription
         ) {
-            return .requiresConsent(denial)
+            return ExecutionAuthorization(kind: .requiresConsent(denial))
         }
-        return .approvedByPromotedRule
+        guard let rule else {
+            return ExecutionAuthorization(kind: .requiresConsent(.noPromotedRule))
+        }
+        return ExecutionAuthorization(
+            kind: .approvedByPromotedRule(ruleID: rule.id, revision: rule.revision)
+        )
+    }
+
+    /// Package-scoped capability issuance for the Finder demonstration's explicit approval
+    /// action. It is intentionally unavailable to external clients and decoded/model data.
+    /// Sensitive files remain ask-first; resting remains watch-only.
+    package static func authorizeUserApprovedExecution(
+        subscription: Subscription
+    ) -> ExecutionAuthorization {
+        if subscription == .resting {
+            return ExecutionAuthorization(kind: .blockedWhileResting)
+        }
+        return ExecutionAuthorization(kind: .approvedByUser)
     }
 }
