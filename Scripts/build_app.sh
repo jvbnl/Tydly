@@ -11,7 +11,8 @@ set -euo pipefail
 APP_NAME="Tydly"
 BUNDLE_ID="io.gymly.tydly"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN_DIR="$(cd "$ROOT" && swift build -c release --show-bin-path)"
+CONFIGURATION="${CONFIGURATION:-release}"
+BIN_DIR="$(cd "$ROOT" && swift build -c "$CONFIGURATION" --show-bin-path)"
 BIN="$BIN_DIR/$APP_NAME"
 PLIST="$ROOT/Sources/Tydly/Info.plist"
 ENTITLEMENTS="$ROOT/Sources/Tydly/Tydly.entitlements"
@@ -19,12 +20,12 @@ OUT="$ROOT/dist/$APP_NAME.app"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 if [[ ! -x "$BIN" ]]; then
-	echo "error: release binary not found at $BIN" >&2
-	echo "       run 'swift build -c release' (or 'make app') first." >&2
+	echo "error: $CONFIGURATION binary not found at $BIN" >&2
+	echo "       build that configuration before assembling the app." >&2
 	exit 1
 fi
 
-echo "Assembling $APP_NAME.app…"
+echo "Assembling $APP_NAME.app ($CONFIGURATION)…"
 rm -rf "$OUT"
 mkdir -p "$OUT/Contents/MacOS"
 mkdir -p "$OUT/Contents/Resources"

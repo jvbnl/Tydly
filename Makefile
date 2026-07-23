@@ -13,7 +13,9 @@
 .PHONY: run build app open test audit clean
 
 run:
-	swift run Tydly
+	swift build
+	CONFIGURATION=debug ./Scripts/build_app.sh
+	./dist/Tydly.app/Contents/MacOS/Tydly
 
 build:
 	swift build -c release
