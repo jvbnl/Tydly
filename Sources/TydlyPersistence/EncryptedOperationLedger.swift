@@ -19,6 +19,9 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
     case backupVerificationFailed
     case insecureStorageDirectory
     case rootMutationRejected
+    case rootGenerationNotFound
+    case rootBindingMismatch
+    case rootGenerationConflict
     case destinationIdentityIsImmutable
     case invalidBatchComposition
     case missingRepairReason
@@ -32,22 +35,46 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
 
 public struct LedgerRootRecord: Identifiable, Equatable, Sendable {
     public let id: String
+    public let descriptor: RootGenerationDescriptor
     public let bookmark: Data
     public let bookmarkVersion: Int
     public let createdAt: Date
     public let updatedAt: Date
 
     public init(
-        id: String,
+        descriptor: RootGenerationDescriptor,
         bookmark: Data,
         bookmarkVersion: Int,
         createdAt: Date,
         updatedAt: Date
     ) {
-        self.id = id
+        self.id = descriptor.id
+        self.descriptor = descriptor
         self.bookmark = bookmark
         self.bookmarkVersion = bookmarkVersion
         self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct RootBindingRecord: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let activeRootID: String
+    public let purpose: RootPurpose
+    public let status: RootBindingStatus
+    public let updatedAt: Date
+
+    public init(
+        id: String,
+        activeRootID: String,
+        purpose: RootPurpose,
+        status: RootBindingStatus,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.activeRootID = activeRootID
+        self.purpose = purpose
+        self.status = status
         self.updatedAt = updatedAt
     }
 }
@@ -102,36 +129,125 @@ public actor EncryptedOperationLedger {
         bookmarkVersion: Int = 1,
         at date: Date = Date()
     ) throws {
-        guard !id.isEmpty, !bookmark.isEmpty else {
+        let descriptor = try RootGenerationDescriptor(
+            id: id,
+            logicalRootID: id,
+            generation: 0,
+            purpose: .legacy,
+            displayName: id,
+            identity: RootResourceIdentity(volumeID: "legacy", fileID: id)
+        )
+        try registerRootGeneration(
+            descriptor,
+            bookmark: bookmark,
+            bookmarkVersion: bookmarkVersion,
+            status: .active,
+            at: date
+        )
+    }
+
+    public func registerRootGeneration(
+        _ descriptor: RootGenerationDescriptor,
+        bookmark: Data,
+        bookmarkVersion: Int = 1,
+        status: RootBindingStatus = .active,
+        at date: Date = Date()
+    ) throws {
+        guard !bookmark.isEmpty else {
             throw LedgerValidationError.emptyIdentifier
         }
         try database.write { db in
             if let existing = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM roots WHERE id = ?",
-                arguments: [id]
+                arguments: [descriptor.id]
             ) {
-                let record = Self.decodeRoot(existing)
-                guard record.bookmark == bookmark,
+                let record = try Self.decodeRoot(existing)
+                guard record.descriptor == descriptor,
+                      record.bookmark == bookmark,
                       record.bookmarkVersion == bookmarkVersion else {
                     throw LedgerStoreError.rootMutationRejected
                 }
-                return
+            } else {
+                let maximumGeneration = try Int.fetchOne(
+                    db,
+                    sql: "SELECT MAX(generation) FROM roots WHERE logicalRootID = ?",
+                    arguments: [descriptor.logicalRootID]
+                )
+                guard descriptor.generation == (maximumGeneration.map { $0 + 1 } ?? 0) else {
+                    throw LedgerStoreError.rootGenerationConflict
+                }
+                try db.execute(
+                    sql: """
+                        INSERT INTO roots (
+                            id, bookmark, bookmarkVersion,
+                            logicalRootID, generation, purpose, displayName,
+                            volumeID, resourceID, createdAt, updatedAt
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                    arguments: [
+                        descriptor.id,
+                        bookmark,
+                        bookmarkVersion,
+                        descriptor.logicalRootID,
+                        descriptor.generation,
+                        descriptor.purpose.rawValue,
+                        descriptor.displayName,
+                        descriptor.identity.volumeID,
+                        descriptor.identity.fileID,
+                        date.timeIntervalSince1970,
+                        date.timeIntervalSince1970
+                    ]
+                )
+            }
+            if let binding = try Row.fetchOne(
+                db,
+                sql: "SELECT purpose FROM rootBindings WHERE logicalRootID = ?",
+                arguments: [descriptor.logicalRootID]
+            ) {
+                let purposeRaw: String = binding["purpose"]
+                guard purposeRaw == descriptor.purpose.rawValue else {
+                    throw LedgerStoreError.rootBindingMismatch
+                }
             }
             try db.execute(
                 sql: """
-                    INSERT INTO roots (
-                        id, bookmark, bookmarkVersion, createdAt, updatedAt
+                    INSERT INTO rootBindings (
+                        logicalRootID, activeRootID, purpose, status, updatedAt
                     ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(logicalRootID) DO UPDATE SET
+                        activeRootID = excluded.activeRootID,
+                        purpose = excluded.purpose,
+                        status = excluded.status,
+                        updatedAt = excluded.updatedAt
                     """,
                 arguments: [
-                    id,
-                    bookmark,
-                    bookmarkVersion,
-                    date.timeIntervalSince1970,
+                    descriptor.logicalRootID,
+                    descriptor.id,
+                    descriptor.purpose.rawValue,
+                    status.rawValue,
                     date.timeIntervalSince1970
                 ]
             )
+        }
+    }
+
+    public func updateRootBindingStatus(
+        logicalRootID: String,
+        status: RootBindingStatus,
+        at date: Date = Date()
+    ) throws {
+        try database.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE rootBindings SET status = ?, updatedAt = ?
+                    WHERE logicalRootID = ?
+                    """,
+                arguments: [status.rawValue, date.timeIntervalSince1970, logicalRootID]
+            )
+            guard db.changesCount == 1 else {
+                throw LedgerStoreError.rootGenerationNotFound
+            }
         }
     }
 
@@ -144,7 +260,61 @@ public actor EncryptedOperationLedger {
             ) else {
                 return nil
             }
-            return Self.decodeRoot(row)
+            return try Self.decodeRoot(row)
+        }
+    }
+
+    public func rootBinding(logicalRootID: String) throws -> RootBindingRecord? {
+        try database.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM rootBindings WHERE logicalRootID = ?",
+                arguments: [logicalRootID]
+            ) else {
+                return nil
+            }
+            return try Self.decodeRootBinding(row)
+        }
+    }
+
+    public func rootBindings() throws -> [RootBindingRecord] {
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM rootBindings ORDER BY logicalRootID"
+            ).map(Self.decodeRootBinding)
+        }
+    }
+
+    public func activeRoot(logicalRootID: String) throws -> LedgerRootRecord? {
+        try database.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT roots.*
+                    FROM rootBindings
+                    JOIN roots ON roots.id = rootBindings.activeRootID
+                    WHERE rootBindings.logicalRootID = ?
+                    """,
+                arguments: [logicalRootID]
+            ) else {
+                return nil
+            }
+            return try Self.decodeRoot(row)
+        }
+    }
+
+    public func rootGenerations(logicalRootID: String) throws -> [LedgerRootRecord] {
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM roots
+                    WHERE logicalRootID = ?
+                    ORDER BY generation
+                    """,
+                arguments: [logicalRootID]
+            ).map(Self.decodeRoot)
         }
     }
 
@@ -677,6 +847,55 @@ public actor EncryptedOperationLedger {
 
                 """)
         }
+        migrator.registerMigration("root-capability-generations-v2") { db in
+            try db.execute(sql: """
+                ALTER TABLE roots
+                    ADD COLUMN logicalRootID TEXT NOT NULL DEFAULT '';
+                ALTER TABLE roots
+                    ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE roots
+                    ADD COLUMN purpose TEXT NOT NULL DEFAULT 'legacy';
+                ALTER TABLE roots
+                    ADD COLUMN displayName TEXT NOT NULL DEFAULT '';
+                ALTER TABLE roots
+                    ADD COLUMN volumeID TEXT NOT NULL DEFAULT 'legacy';
+                ALTER TABLE roots
+                    ADD COLUMN resourceID TEXT NOT NULL DEFAULT '';
+
+                UPDATE roots
+                SET logicalRootID = id,
+                    displayName = id,
+                    resourceID = id
+                WHERE logicalRootID = '';
+
+                CREATE UNIQUE INDEX rootGenerationByLogicalID
+                    ON roots(logicalRootID, generation);
+
+                CREATE TABLE rootBindings (
+                    logicalRootID TEXT PRIMARY KEY NOT NULL,
+                    activeRootID TEXT NOT NULL UNIQUE
+                        REFERENCES roots(id) ON DELETE RESTRICT,
+                    purpose TEXT NOT NULL CHECK (
+                        purpose IN (
+                            'sourceDesktop',
+                            'sourceDownloads',
+                            'destination',
+                            'legacy'
+                        )
+                    ),
+                    status TEXT NOT NULL CHECK (
+                        status IN ('active', 'needsReauthorization', 'unsupported')
+                    ),
+                    updatedAt DOUBLE NOT NULL
+                );
+
+                INSERT INTO rootBindings (
+                    logicalRootID, activeRootID, purpose, status, updatedAt
+                )
+                SELECT logicalRootID, id, purpose, 'active', updatedAt
+                FROM roots;
+                """)
+        }
         return migrator
     }
 
@@ -903,12 +1122,44 @@ public actor EncryptedOperationLedger {
         )
     }
 
-    private static func decodeRoot(_ row: Row) -> LedgerRootRecord {
-        LedgerRootRecord(
+    private static func decodeRoot(_ row: Row) throws -> LedgerRootRecord {
+        let purposeRaw: String = row["purpose"]
+        guard let purpose = RootPurpose(rawValue: purposeRaw) else {
+            throw LedgerStoreError.integrityCheckFailed
+        }
+        let identity = try RootResourceIdentity(
+            volumeID: row["volumeID"],
+            fileID: row["resourceID"]
+        )
+        let descriptor = try RootGenerationDescriptor(
             id: row["id"],
+            logicalRootID: row["logicalRootID"],
+            generation: row["generation"],
+            purpose: purpose,
+            displayName: row["displayName"],
+            identity: identity
+        )
+        return LedgerRootRecord(
+            descriptor: descriptor,
             bookmark: row["bookmark"],
             bookmarkVersion: row["bookmarkVersion"],
             createdAt: Date(timeIntervalSince1970: row["createdAt"]),
+            updatedAt: Date(timeIntervalSince1970: row["updatedAt"])
+        )
+    }
+
+    private static func decodeRootBinding(_ row: Row) throws -> RootBindingRecord {
+        let purposeRaw: String = row["purpose"]
+        let statusRaw: String = row["status"]
+        guard let purpose = RootPurpose(rawValue: purposeRaw),
+              let status = RootBindingStatus(rawValue: statusRaw) else {
+            throw LedgerStoreError.integrityCheckFailed
+        }
+        return RootBindingRecord(
+            id: row["logicalRootID"],
+            activeRootID: row["activeRootID"],
+            purpose: purpose,
+            status: status,
             updatedAt: Date(timeIntervalSince1970: row["updatedAt"])
         )
     }
@@ -1022,6 +1273,19 @@ public actor EncryptedOperationLedger {
     private static func verifyIntegrity(_ database: DatabaseQueue) throws {
         try verifyPhysicalIntegrity(database)
         try database.read { db in
+            let roots = try Row.fetchAll(db, sql: "SELECT * FROM roots")
+                .map(Self.decodeRoot)
+            let rootsByID = Dictionary(uniqueKeysWithValues: roots.map { ($0.id, $0) })
+            let bindings = try Row.fetchAll(db, sql: "SELECT * FROM rootBindings")
+                .map(Self.decodeRootBinding)
+            for binding in bindings {
+                guard let root = rootsByID[binding.activeRootID],
+                      root.descriptor.logicalRootID == binding.id,
+                      root.descriptor.purpose == binding.purpose else {
+                    throw LedgerStoreError.integrityCheckFailed
+                }
+            }
+
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM operations")
             for row in rows {
                 let operation = try decodeOperation(row)

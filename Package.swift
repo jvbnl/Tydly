@@ -25,7 +25,8 @@ let package = Package(
         .executable(name: "TydlyLedgerCrashProbe", targets: ["TydlyLedgerCrashProbe"]),
         .library(name: "TydlyCore", targets: ["TydlyCore"]),
         .library(name: "TydlyAI", targets: ["TydlyAI"]),
-        .library(name: "TydlyPersistence", targets: ["TydlyPersistence"])
+        .library(name: "TydlyPersistence", targets: ["TydlyPersistence"]),
+        .library(name: "TydlyMacEngine", targets: ["TydlyMacEngine"])
     ],
     dependencies: [
         .package(
@@ -56,13 +57,20 @@ let package = Package(
                 .linkedFramework("Security")
             ]
         ),
+        .target(
+            name: "TydlyMacEngine",
+            dependencies: ["TydlyCore", "TydlyPersistence"],
+            linkerSettings: [
+                .linkedFramework("FileProvider")
+            ]
+        ),
         .executableTarget(
             name: "TydlyLedgerCrashProbe",
             dependencies: ["TydlyCore", "TydlyPersistence"]
         ),
         .executableTarget(
             name: "Tydly",
-            dependencies: ["TydlyCore", "TydlyAI", "TydlyPersistence"],
+            dependencies: ["TydlyCore", "TydlyAI", "TydlyPersistence", "TydlyMacEngine"],
             // Info.plist / entitlements live beside the sources but are not Swift sources
             // or bundle resources — the linker flag below embeds the plist, and the app
             // bundle script copies both. Excluding them keeps `swift build` warning-free.
@@ -98,6 +106,10 @@ let package = Package(
         .testTarget(
             name: "TydlyPersistenceTests",
             dependencies: ["TydlyPersistence", "TydlyCore"]
+        ),
+        .testTarget(
+            name: "TydlyMacEngineTests",
+            dependencies: ["TydlyMacEngine", "TydlyPersistence", "TydlyCore"]
         )
     ]
 )

@@ -10,7 +10,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
 
         let ledger = try fixture.openLedger()
         let schemaVersion = try await ledger.schemaVersion()
-        XCTAssertEqual(schemaVersion, 1)
+        XCTAssertEqual(schemaVersion, 2)
         try await ledger.close()
 
         let header = Data(try Data(contentsOf: fixture.databaseURL).prefix(16))
@@ -240,6 +240,71 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? LedgerStoreError, .rootMutationRejected)
         }
+        try await ledger.close()
+    }
+
+    func testRootRefreshCreatesImmutableMonotonicGeneration() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let ledger = try fixture.openLedger()
+
+        let first = try RootGenerationDescriptor(
+            id: "desktop-g0",
+            logicalRootID: "desktop",
+            generation: 0,
+            purpose: .sourceDesktop,
+            displayName: "Desktop",
+            identity: RootResourceIdentity(volumeID: "volume", fileID: "desktop-file")
+        )
+        try await ledger.registerRootGeneration(
+            first,
+            bookmark: Data("bookmark-0".utf8)
+        )
+        let second = try RootGenerationDescriptor(
+            id: "desktop-g1",
+            logicalRootID: "desktop",
+            generation: 1,
+            purpose: .sourceDesktop,
+            displayName: "Desktop",
+            identity: first.identity
+        )
+        try await ledger.registerRootGeneration(
+            second,
+            bookmark: Data("bookmark-1".utf8)
+        )
+
+        let binding = try await ledger.rootBinding(logicalRootID: "desktop")
+        let active = try await ledger.activeRoot(logicalRootID: "desktop")
+        let generations = try await ledger.rootGenerations(logicalRootID: "desktop")
+        XCTAssertEqual(binding?.activeRootID, second.id)
+        XCTAssertEqual(binding?.status, .active)
+        XCTAssertEqual(active?.descriptor, second)
+        XCTAssertEqual(generations.map(\.descriptor), [first, second])
+
+        let skippedGeneration = try RootGenerationDescriptor(
+            id: "desktop-g3",
+            logicalRootID: "desktop",
+            generation: 3,
+            purpose: .sourceDesktop,
+            displayName: "Desktop",
+            identity: first.identity
+        )
+        do {
+            try await ledger.registerRootGeneration(
+                skippedGeneration,
+                bookmark: Data("bookmark-3".utf8)
+            )
+            XCTFail("bookmark generations must be contiguous")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .rootGenerationConflict)
+        }
+
+        try await ledger.updateRootBindingStatus(
+            logicalRootID: "desktop",
+            status: .needsReauthorization
+        )
+        let held = try await ledger.rootBinding(logicalRootID: "desktop")
+        XCTAssertEqual(held?.status, .needsReauthorization)
         try await ledger.close()
     }
 
