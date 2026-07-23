@@ -1,0 +1,25 @@
+name: macOS
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "cursor/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+      - name: Assemble app bundle
+        run: make app
