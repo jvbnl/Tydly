@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import TydlyCore
+import TydlyMacEngine
+import TydlyPersistence
 
 /// The app-wide observable state for the macOS UI. Holds `TydlyCore` value types and the
 /// user-facing state machine; the rule *logic* lives in `TydlyCore.Rules`. There is no
@@ -33,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published var subscription: TydlyCore.Subscription = .trial(daysLeft: 30)
 
     private let defaults: UserDefaults
+    private var rootCapabilityStore: RootCapabilityStore?
 
     private enum Keys {
         static let onboarded = "tydly.onboarded"
@@ -134,6 +137,81 @@ final class AppModel: ObservableObject {
 
     func skipNaming(scope: FolderScope) {
         completeOnboarding(persona: Persona(name: Persona.fallbackName, colorIndex: 0), scope: scope)
+    }
+
+    enum FolderAuthorizationResult {
+        case success
+        case cancelled
+        case failed
+    }
+
+    func authorizeOnboardingFolders(
+        desktopRequest: RootAuthorizationRequest,
+        downloadsRequest: RootAuthorizationRequest
+    ) async -> FolderAuthorizationResult {
+        do {
+            let store = try capabilityStore()
+            let panel = RootAuthorizationPanel()
+            let desktop = try panel.selectDirectory(desktopRequest)
+            _ = try await store.registerPanelSelection(
+                logicalRootID: "source.desktop",
+                purpose: .sourceDesktop,
+                selectedURL: desktop,
+                requiredURL: FileManager.default.urls(
+                    for: .desktopDirectory,
+                    in: .userDomainMask
+                ).first
+            )
+
+            let downloads = try panel.selectDirectory(downloadsRequest)
+            _ = try await store.registerPanelSelection(
+                logicalRootID: "source.downloads",
+                purpose: .sourceDownloads,
+                selectedURL: downloads,
+                requiredURL: FileManager.default.urls(
+                    for: .downloadsDirectory,
+                    in: .userDomainMask
+                ).first
+            )
+            return .success
+        } catch RootCapabilityError.selectionCancelled {
+            return .cancelled
+        } catch {
+            return .failed
+        }
+    }
+
+    private func capabilityStore() throws -> RootCapabilityStore {
+        if let rootCapabilityStore {
+            return rootCapabilityStore
+        }
+
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let ledgerURL = appSupport
+            .appendingPathComponent("Tydly", isDirectory: true)
+            .appendingPathComponent("Ledger", isDirectory: true)
+            .appendingPathComponent("Active", isDirectory: true)
+            .appendingPathComponent("ledger.sqlite")
+
+        #if DEBUG
+        let useDataProtectionKeychain = false
+        #else
+        let useDataProtectionKeychain = true
+        #endif
+        let ledger = try EncryptedOperationLedger(
+            path: ledgerURL.path,
+            keyStore: KeychainDatabaseKeyStore(
+                useDataProtectionKeychain: useDataProtectionKeychain
+            )
+        )
+        let store = RootCapabilityStore(ledger: ledger)
+        rootCapabilityStore = store
+        return store
     }
 
     private func persist() {

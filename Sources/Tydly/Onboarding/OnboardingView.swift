@@ -1,5 +1,6 @@
 import SwiftUI
 import TydlyCore
+import TydlyMacEngine
 
 /// The onboarding card (Phase 01): one floating glass card, three steps, one idea each.
 /// Trust is set before anything runs — what it sees, where it works, who it is. Presented
@@ -15,6 +16,8 @@ struct OnboardingView: View {
     @State private var scope = FolderScope()          // Desktop + Downloads (fixed scope)
     @State private var name = Persona.suggestedName
     @State private var colorIndex = 0
+    @State private var isAuthorizingFolders = false
+    @State private var folderAuthorizationError: String?
 
     private let stepCount = 3
 
@@ -27,7 +30,12 @@ struct OnboardingView: View {
                 case 0:
                     PrivacyStep(onContinue: advance)
                 case 1:
-                    FolderScopeStep(scope: scope, onAllow: advance)
+                    FolderScopeStep(
+                        scope: scope,
+                        isAuthorizing: isAuthorizingFolders,
+                        errorMessage: folderAuthorizationError,
+                        onAllow: authorizeFolders
+                    )
                 default:
                     NamingStep(
                         name: $name,
@@ -66,5 +74,41 @@ struct OnboardingView: View {
         let persona = Persona(name: finalName, colorIndex: colorIndex)
         model.completeOnboarding(persona: persona, scope: scope)
         onFinish()
+    }
+
+    private func authorizeFolders() {
+        guard !isAuthorizingFolders else { return }
+        isAuthorizingFolders = true
+        folderAuthorizationError = nil
+
+        Task {
+            let result = await model.authorizeOnboardingFolders(
+                desktopRequest: RootAuthorizationRequest(
+                    message: L.onboarding_select_desktop_message,
+                    prompt: L.onboarding_select,
+                    initialDirectory: FileManager.default.urls(
+                        for: .desktopDirectory,
+                        in: .userDomainMask
+                    ).first
+                ),
+                downloadsRequest: RootAuthorizationRequest(
+                    message: L.onboarding_select_downloads_message,
+                    prompt: L.onboarding_select,
+                    initialDirectory: FileManager.default.urls(
+                        for: .downloadsDirectory,
+                        in: .userDomainMask
+                    ).first
+                )
+            )
+            isAuthorizingFolders = false
+            switch result {
+            case .success:
+                advance()
+            case .cancelled:
+                break
+            case .failed:
+                folderAuthorizationError = L.onboarding_scope_error
+            }
+        }
     }
 }

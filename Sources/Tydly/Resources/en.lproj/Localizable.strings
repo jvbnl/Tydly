@@ -49,6 +49,11 @@
 "Downloads" = "Downloads";
 "The rest of your Mac stays off-limits." = "The rest of your Mac stays off-limits.";
 "Allow these 2 folders" = "Allow these 2 folders";
+"Select" = "Select";
+"Select your Desktop folder." = "Select your Desktop folder.";
+"Select your Downloads folder." = "Select your Downloads folder.";
+"Folder access wasn't granted. Nothing changed." = "Folder access wasn't granted. Nothing changed.";
+"%@, allowed" = "%@, allowed";
 "Your archivist needs a name" = "Your archivist needs a name";
 "own…" = "own…";
 "Signs their work as" = "Signs their work as";
