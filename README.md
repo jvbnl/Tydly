@@ -27,12 +27,13 @@ popover (all tidy / decision / working) → onboarding.**
 | Onboarding: Privacy → Folder scope → Naming | ✅ |
 | The 10 product rules encoded + unit-tested in `TydlyCore` | ✅ |
 | Security-first execution policy + local Foundation Models boundary | ✅ foundation |
+| Encrypted operation ledger, inverse undo records, and crash reconciliation | ✅ foundation |
 | Finder demonstration, whisper bar, error states, rules pane, settings, weekly note | ⏳ next |
-| Real file engine (FSEvents, journal/undo, security-scoped bookmarks) | ⏳ next |
+| Real file engine (FSEvents, security-scoped bookmarks, race-safe moves) | ⏳ next |
 
-There is **no file engine yet** — state is seeded from `SampleData` so every screen renders
-the real design, and intents (approve / skip / undo) mutate in-memory state so the popover
-feels live.
+There is **no file mover yet** — state is seeded from `SampleData` so every screen renders
+the real design. The encrypted ledger can durably prepare and reconcile operation intent,
+but nothing in the app invokes a filesystem mutation.
 
 ## Requirements
 
@@ -46,7 +47,7 @@ feels live.
 
 ```sh
 make run      # debug build, launches Tydly in the menu bar (Ctrl-C to quit)
-make test     # runs the Core and local-AI policy tests
+make test     # unit suite + abrupt-process ledger recovery probes
 make app      # assembles dist/Tydly.app (a proper menu-bar agent bundle)
 make audit    # verifies signing, sandbox, and no-network invariants
 make open     # build the .app and launch it
@@ -63,12 +64,15 @@ switcher at the foot of the popover: **All tidy · Decision · Working · Observ
 
 ## Architecture
 
-Three targets keep policy testable and prevent the model from receiving filesystem powers:
+Four targets keep policy testable and prevent the model from receiving filesystem powers:
 
 - **`TydlyCore`** — pure Foundation. Domain types (`AgentState`, `FilingRule`, `Decision`,
   …), path-free AI contracts, and rule/execution policy. No SwiftUI, AppKit, or Combine.
 - **`TydlyAI`** — the constrained, tool-free adapter to Apple's on-device Foundation Models
   framework. It returns allowlisted project and evidence IDs only.
+- **`TydlyPersistence`** — the single-writer SQLCipher ledger and Keychain key store. It
+  records authorization, relative-path intent, transitions, inverse undo, and repair state,
+  but owns no move API.
 - **`Tydly`** — the macOS executable. SwiftUI `MenuBarExtra` for the icon + popover, a thin
   AppKit `AppDelegate` for the floating onboarding window, `AppModel` (`ObservableObject`)
   wrapping the core.
@@ -77,6 +81,7 @@ Three targets keep policy testable and prevent the model from receiving filesyst
 Sources/
   TydlyCore/         AgentState · Domain · Rules · AIContracts · ExecutionPolicy · SampleData
   TydlyAI/           FoundationModelClassifier
+  TydlyPersistence/  DatabaseKeyStore · EncryptedOperationLedger · quarantine
   Tydly/
     TydlyApp.swift            @main, MenuBarExtra scene
     AppDelegate.swift         onboarding window (whisper bar later)
@@ -89,6 +94,7 @@ Sources/
 Tests/
   TydlyCoreTests/             Rules · State · ExecutionPolicy
   TydlyAITests/               Allowlist · sensitivity · prompt-boundary validation
+  TydlyPersistenceTests/      Encryption · recovery · inverse undo · backup · quarantine
 ```
 
 ### Privacy is structural
@@ -99,6 +105,11 @@ the app *cannot* open an outbound connection. `LSUIElement` in `Info.plist` keep
 menu-bar agent (no Dock icon). Development app bundles are ad-hoc signed with this same
 entitlement set, and CI audits both source and signed output. Classification uses only
 `SystemLanguageModel`; it has no tools and no cloud fallback.
+
+The ledger uses SQLCipher 4.17.0 through Zetetic's managed GRDB 7.11.1 fork, both pinned to
+immutable revisions. Its 256-bit key is nonsynchronizing. Production defaults to the Data
+Protection Keychain and requires a provisioned signing identity; ad-hoc CI verifies local
+Keychain plumbing separately because it cannot impersonate Apple's restricted access group.
 
 ## The ten non-negotiable rules
 

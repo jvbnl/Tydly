@@ -10,8 +10,8 @@ ground for humans — this doc adds *current state, what's unverified, and what 
 - Requires an Apple-silicon Mac on macOS 26+, Swift 6.2, and the macOS 26 SDK. The owner
   explicitly approved the higher floor for Apple's fully local Foundation Models framework.
   Don't move to an Xcode project; the workflow remains SwiftPM and CLI-only.
-- Three targets: **`TydlyCore`** (pure Foundation policy/contracts), **`TydlyAI`**
-  (tool-free on-device model adapter), and **`Tydly`** (macOS SwiftUI/AppKit UI).
+- Four targets: **`TydlyCore`** (pure policy/contracts), **`TydlyAI`** (tool-free local
+  model adapter), **`TydlyPersistence`** (encrypted ledger), and **`Tydly`** (macOS UI).
 - The package builds and its Core/AI tests, signed bundle audit, and detached launch pass on
   an Apple-silicon macOS 26 runner. Interactive checks still need a logged-in Mac.
 
@@ -47,14 +47,15 @@ Implemented (phase order requested by the owner: icon → popover → onboarding
 | Domain model + 10 rules as logic | `Sources/TydlyCore/` | compiled |
 | AI contracts + automatic-execution policy | `Sources/TydlyCore/` | implemented + tested |
 | Local Foundation Models reranker | `Sources/TydlyAI/` | implemented + validated boundary |
+| SQLCipher operation ledger + crash recovery | `Sources/TydlyPersistence/` | implemented + disk-tested |
 | Signed sandbox + privacy audit | `Scripts/`, `.github/workflows/macos.yml` | verified on macOS 26 |
-| Core and AI tests | `Tests/` | passing |
+| Core, AI, persistence, and abrupt-process tests | `Tests/`, `Scripts/` | passing |
 
 **Not built yet** (see "Next phases"): Finder demonstration (Phase 02), whisper bar (04),
 error/repair states (05), rule offer + rules pane + weekly note + trial/rest (06), settings
-window (07), and the **real file engine** (FSEvents, moves, undo journal, security-scoped
-bookmarks). There is **no file engine** — `AppModel` seeds `TydlyCore.SampleData` and mutates
-in-memory so every screen renders and the approve/skip/undo loop feels live.
+window (07), and the **real file mover** (FSEvents, security-scoped bookmarks, safe moves).
+The encrypted ledger now records operation intent, authorization, inverse undo, and recovery,
+but no production code mutates files. `AppModel` still uses `SampleData`.
 
 ## Verify first
 
@@ -90,7 +91,7 @@ the Journey mock at 1× before marking the current screens visually verified.
 
 ```sh
 make run     # debug build → launches in the menu bar (Ctrl-C quits)
-make test    # Core and local-AI policy tests
+make test    # unit suite + abrupt-process ledger recovery probes
 make app     # dist/Tydly.app (proper menu-bar agent bundle)
 make audit   # signing, sandbox, minimum OS, and no-network checks
 make open    # build + launch the .app
@@ -104,8 +105,9 @@ All tidy / Decision / Working / Observing and replay onboarding. Use that to see
 
 ```
 Sources/
-  TydlyCore/            Domain · Rules · AIContracts · ExecutionPolicy · SampleData
+  TydlyCore/            Domain · Rules · AIContracts · ExecutionPolicy · OperationLedger
   TydlyAI/              FoundationModelClassifier (local, no tools/filesystem/network)
+  TydlyPersistence/     SQLCipher ledger · Keychain key store · quarantine
   Tydly/
     TydlyApp.swift              @main; MenuBarExtra scene
     AppDelegate.swift           onboarding NSWindow (whisper NSPanel goes here next)
@@ -118,6 +120,7 @@ Sources/
 Tests/
   TydlyCoreTests/               Rules · state · execution policy
   TydlyAITests/                 allowlist · sensitivity · prompt-boundary validation
+  TydlyPersistenceTests/        encryption · recovery · inverse undo · backup · quarantine
 ```
 
 Layering rule: **UI-agnostic logic and all rule enforcement live in `TydlyCore`; user-facing
@@ -130,6 +133,13 @@ IDs, creates a fresh tool-free `SystemLanguageModel` session, and returns only v
 allowlisted IDs. It cannot clear sensitivity, report execution confidence, mutate rules, or
 authorize a move. Never add cloud fallback, Private Cloud Compute, model downloads, or a
 local model server.
+
+`TydlyPersistence` owns no move API. It uses SQLCipher 4.17.0 through Zetetic's managed
+GRDB 7.11.1 fork, pinned in `Package.resolved`. Existing stores never generate replacement
+keys. Production defaults to a nonsynchronizing Data Protection Keychain key; this path
+requires a provisioned signing identity, while ad-hoc CI can only verify legacy local
+Keychain plumbing. Run the signed app with `--verify-data-protection-keychain` as a
+provisioned release gate.
 
 ## The ten non-negotiable rules — DO NOT WEAKEN
 
@@ -146,7 +156,7 @@ easily broken by well-meaning changes:
   icon, popover, and whisper bar are the only surfaces. (Grep stays clean — keep it that way.)
 - **Rule 8** — icon never animates when idle (`AgentState.iconAnimates`).
 - **Rule 3** — every action undoable, individually and per batch; undo must survive restarts
-  (needs the journal — see below).
+  (the ledger foundation exists; do not add moves until bookmark and mover integration uses it).
 
 If a task seems to require weakening any rule, **stop and ask the owner** — they asked to be
 consulted before any deviation.
@@ -183,10 +193,10 @@ the literal mock copy.
 3. **Error/repair states (Phase 05)** and **growing-trust (Phase 06)** popover bodies — the
    model already has the types (`ErrorKind`, `FilingRule`, `Subscription`).
 4. **Settings window (Phase 07).**
-5. **Real file engine.** Follow `Documentation/SECURITY.md`, starting with encrypted durable
-   journal/recovery and security-scoped bookmarks before any mutation. FSEvents is only a
-   rescan hint. Initial moves are race-safe, no-overwrite, same-volume ordinary files; undo is
-   a durable inverse operation. **Keep the sandbox network-free** — do not add
+5. **Real file engine.** Follow `Documentation/SECURITY.md`. The encrypted ledger/recovery
+   substrate is present; security-scoped bookmark generations come next. FSEvents is only a
+   rescan hint. Initial moves are race-safe, no-overwrite, same-volume ordinary files; undo
+   is a durable inverse operation. **Keep the sandbox network-free** — do not add
    `com.apple.security.network.client` (`Tydly.entitlements`).
 
 ## Guardrails

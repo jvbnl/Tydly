@@ -35,17 +35,17 @@ These are enforced in `Sources/TydlyCore/Rules.swift` and pinned by `Tests/Tydly
 - **macOS 26 on Apple silicon.** The owner approved raising the minimum so semantic
   classification can use Apple's on-device Foundation Models framework. Swift 6.2 and the
   macOS 26 SDK are required; no cloud fallback is allowed.
-- **Three targets.** `TydlyCore` (pure Foundation policy + path-free contracts), `TydlyAI`
-  (tool-free local model adapter), and `Tydly` (macOS SwiftUI/AppKit UI). Keep UI-agnostic
-  logic in Core and English copy in Localization.
+- **Four targets.** `TydlyCore` (pure policy + path-free contracts), `TydlyAI` (tool-free
+  local model adapter), `TydlyPersistence` (encrypted operation ledger), and `Tydly`
+  (macOS SwiftUI/AppKit UI). Keep UI-agnostic logic in Core and English in Localization.
 - **`MenuBarExtra` (`.window` style)** for icon + popover; a thin AppKit `AppDelegate` owns
   windows/panels that sit outside the scene (onboarding now; whisper `NSPanel` next).
 - **Menu-bar glyph** is a programmatically rendered *template* `NSImage` (`MenuGlyph`) so
   macOS tints it; badges are separate colored overlays.
-- **No file engine yet.** `AppModel` seeds `SampleData` and mutates in-memory. When wiring
-  real moves, follow `Documentation/SECURITY.md`: encrypted prepare-before-mutation journal,
-  launch recovery, security-scoped roots, FSEvents as a rescan hint, race-safe no-overwrite
-  moves, and durable inverse undo. Keep the sandbox network-free.
+- **No file mover yet.** `AppModel` still uses `SampleData`. `TydlyPersistence` now supplies
+  the SQLCipher prepare-before-mutation ledger, recovery matrix, inverse undo records,
+  encrypted backups, and quarantine. Security-scoped root generations and the race-safe
+  mover must use this substrate; FSEvents remains only a rescan hint.
 - **AI is advisory.** `TydlyAI` receives bounded path-free evidence and candidate IDs, has no
   tools, and returns allowlisted IDs only. Deterministic `TydlyCore` policy owns sensitivity,
   consent, autonomy, resting mode, confidence, execution, and undo. See

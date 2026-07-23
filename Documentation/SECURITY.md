@@ -126,8 +126,10 @@ nonterminal operation before watchers or new moves start:
 
 - matching source present and destination absent: safely retry or mark aborted;
 - source absent and matching destination present: finalize;
-- both present, neither present, destination conflict, identity mismatch, or unavailable
-  bookmark: enter `needsRepair` and do not guess.
+- both present, neither present, destination conflict, or identity mismatch: enter
+  `needsRepair` and do not guess;
+- unavailable bookmark: persist the hold event without destroying the resumable phase, then
+  retry observation only after explicit reauthorization.
 
 Undo is a new durable inverse operation linked to the original. Batch undo runs in reverse
 order and records partial progress. If the original location is occupied or the destination
@@ -135,9 +137,10 @@ item changed, undo stops rather than overwriting.
 
 ## Persistence and encryption
 
-The planned source of truth is an explicit SQLite operation ledger accessed through a
-reviewed Swift wrapper. Use one serialized writer, foreign keys, compare-and-swap phase
-transitions, named migrations, integrity checks, and verified online backups.
+The source-of-truth foundation is implemented in `TydlyPersistence`: SQLCipher 4.17.0 through
+Zetetic's managed GRDB 7.11.1 fork, both pinned to immutable revisions. It uses one serialized
+writer, foreign keys, compare-and-swap transitions, named migrations, full integrity checks,
+and verified encrypted backups.
 
 For the low-write safety ledger, prefer rollback journaling with:
 
@@ -148,11 +151,24 @@ PRAGMA fullfsync = ON;
 PRAGMA foreign_keys = ON;
 ```
 
-Use whole-database encryption when the persistence slice lands. Store a random database key
-as a nonsynchronizing Data Protection Keychain item. Never store the key in defaults, the
-database, source code, or a synced keychain. Derived scan indexes and thumbnails are excluded
-from backups; the undo ledger remains backup-eligible unless the product explicitly chooses
-device-only recovery.
+The schema records immutable root generations, batches, operations, typed authorization,
+relative paths, expected/observed identities, exact inverse links, repair reasons, and an
+append-only event sequence. It rejects root retargeting, no-op/inconsistent intent,
+destination identity rewrites, and active resource conflicts.
+
+The 256-bit database key is nonsynchronizing and never stored in defaults, the database, or
+source code. Production defaults to `kSecUseDataProtectionKeychain` with
+`WhenUnlockedThisDeviceOnly`. Apple requires a provisioned signing identity for that
+restricted access group; an ad-hoc signature cannot reproduce it. CI therefore verifies
+legacy local Keychain plumbing from the signed app, while a provisioned release must run:
+
+```sh
+Tydly.app/Contents/MacOS/Tydly --verify-data-protection-keychain
+```
+
+Backups are compact encrypted local snapshots using the same device-only key. They are not
+cross-device recovery exports. Each backup is written to an obvious partial sibling, opened
+and fully checked, synced, then atomically renamed and its parent directory synced.
 
 The erase flow deletes the encryption key first, then the database, sidecars, bookmarks,
 preferences, caches, and local diagnostics. It must not promise physical secure deletion on
@@ -169,9 +185,11 @@ APFS or SSD storage.
 
 ## Signing and release
 
-All assembled development apps are ad-hoc signed with the production entitlement set so
-local testing exercises App Sandbox. Release builds use a stable Developer ID or App Store
-identity, Hardened Runtime, secure timestamps, notarization, and stapling.
+All assembled development apps are ad-hoc signed so local testing exercises App Sandbox,
+no-network policy, embedded SQLCipher, and local Keychain plumbing. Ad-hoc signatures cannot
+claim Apple's provisioned Data Protection Keychain group. Release builds use a stable
+provisioned Developer ID or App Store identity, App ID prefix, Hardened Runtime, secure
+timestamps, notarization, and stapling.
 
 Release checks inspect every bundled executable:
 
