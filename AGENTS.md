@@ -12,8 +12,8 @@ ground for humans — this doc adds *current state, what's unverified, and what 
   eye on other platforms later.
 - Two targets: **`TydlyCore`** (pure Foundation — model + the product rules, unit-tested) and
   **`Tydly`** (macOS SwiftUI/AppKit UI).
-- **The code has never been compiled** (it was authored in a Linux container with no macOS
-  SDK). Your first job is to make it build. See "Verify first".
+- The package builds and its tests pass on macOS 14 with Apple Swift 5.10. Interactive
+  menu-bar and pixel-fidelity checks still need a logged-in Mac. See "Verify first".
 
 ## What Tydly is
 
@@ -33,13 +33,13 @@ Implemented (phase order requested by the owner: icon → popover → onboarding
 
 | Area | File(s) | State |
 |---|---|---|
-| SwiftPM scaffold, Makefile, app-bundle script | `Package.swift`, `Makefile`, `Scripts/` | done, unverified |
-| Design tokens + components + template glyph | `Sources/Tydly/DesignSystem/` | done, unverified |
-| Menu-bar icon, 5 states | `Sources/Tydly/MenuBar/MenuBarLabel.swift` | done, unverified |
-| Popover: All tidy / Decision / Working / Observing | `Sources/Tydly/Popover/` | done, unverified |
-| Onboarding: Privacy → Folder scope → Naming | `Sources/Tydly/Onboarding/` | done, unverified |
-| Domain model + 10 rules as logic | `Sources/TydlyCore/` | done, unverified |
-| Rule tests | `Tests/TydlyCoreTests/` | done, unverified |
+| SwiftPM scaffold, Makefile, app-bundle script | `Package.swift`, `Makefile`, `Scripts/` | build + bundle verified |
+| Design tokens + components + template glyph | `Sources/Tydly/DesignSystem/` | compiled, visual check pending |
+| Menu-bar icon, 5 states | `Sources/Tydly/MenuBar/MenuBarLabel.swift` | compiled, visual check pending |
+| Popover: All tidy / Decision / Working / Observing | `Sources/Tydly/Popover/` | compiled, visual check pending |
+| Onboarding: Privacy → Folder scope → Naming | `Sources/Tydly/Onboarding/` | compiled, interaction check pending |
+| Domain model + 10 rules as logic | `Sources/TydlyCore/` | compiled |
+| Rule tests | `Tests/TydlyCoreTests/` | 13 passing |
 
 **Not built yet** (see "Next phases"): Finder demonstration (Phase 02), whisper bar (04),
 error/repair states (05), rule offer + rules pane + weekly note + trial/rest (06), settings
@@ -47,10 +47,13 @@ window (07), and the **real file engine** (FSEvents, moves, undo journal, securi
 bookmarks). There is **no file engine** — `AppModel` seeds `TydlyCore.SampleData` and mutates
 in-memory so every screen renders and the approve/skip/undo loop feels live.
 
-## Verify first (authored without a compiler)
+## Verify first
 
-Run `swift build` and fix whatever the compiler flags before anything else. These are the
-spots most likely to need a nudge, because they couldn't be tested here:
+`swift build`, `swift test`, `make app`, and a detached app-bundle launch pass on macOS 14
+with Apple Swift 5.10. The initial compiler shakeout fixed a `Subscription` name collision
+with Combine; packaged localization now resolves from `Contents/Resources` without relying
+on SwiftPM's build directory. Before starting the next phase, run `make run` on a logged-in
+Mac and complete these interactive checks:
 
 1. **`MenuBarExtra` label updates.** The icon re-renders because `TydlyApp` observes
    `AppModel` (a `@StateObject`). If the menu-bar icon doesn't update on state change on your
@@ -73,7 +76,8 @@ spots most likely to need a nudge, because they couldn't be tested here:
 6. **⌘Z undo.** `PopoverRootView` owns a hidden keyboard-shortcut button. Verify ⌘Z undoes the
    last batch while the popover is open.
 
-Then `swift test` (the rules) and `make run` (eyeball against the Journey mock at 1×).
+The automated build and rule checks run on every branch update. Eyeball `make run` against
+the Journey mock at 1× before marking the current screens visually verified.
 
 ## Build / run / iterate
 

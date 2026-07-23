@@ -29,7 +29,7 @@ final class AppModel: ObservableObject {
     @Published var workingLocation: String = SampleData.workingLocation
     @Published var parkedCount: Int
     @Published var parkedReAskLabel: String = SampleData.parkedReAskLabel
-    @Published var subscription: Subscription = .trial(daysLeft: 30)
+    @Published var subscription: TydlyCore.Subscription = .trial(daysLeft: 30)
 
     private let defaults: UserDefaults
 

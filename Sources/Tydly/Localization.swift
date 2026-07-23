@@ -10,10 +10,29 @@ import TydlyCore
 /// move counts into a `.stringsdict`. Copy marked "do not change" in the handoff is kept
 /// verbatim.
 enum L {
+    private static let resourceBundle: Bundle = {
+        let bundleName = "Tydly_Tydly.bundle"
+        let candidateDirectories = [
+            Bundle.main.resourceURL,
+            Bundle.main.bundleURL
+        ].compactMap { $0 }
+
+        for directory in candidateDirectories {
+            let url = directory.appendingPathComponent(bundleName, isDirectory: true)
+            if let bundle = Bundle(url: url) {
+                return bundle
+            }
+        }
+
+        // `swift run` keeps the generated bundle beside the executable. Bundle.module
+        // remains the authoritative fallback for an unbundled SwiftPM launch.
+        return .module
+    }()
+
     private static func s(_ english: String) -> String {
         // Base-English string doubles as the key; `value:` is the fallback when a
         // translation (e.g. a future nl.lproj) is missing.
-        NSLocalizedString(english, tableName: "Localizable", bundle: .module, value: english, comment: "")
+        NSLocalizedString(english, tableName: "Localizable", bundle: resourceBundle, value: english, comment: "")
     }
 
     // MARK: File nouns (verb + count + noun receipts)
