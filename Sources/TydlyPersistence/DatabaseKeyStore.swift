@@ -20,13 +20,16 @@ public struct KeychainDatabaseKeyStore: DatabaseKeyStore {
 
     private let service: String
     private let account: String
+    private let useDataProtectionKeychain: Bool
 
     public init(
         service: String = "io.gymly.tydly.operation-ledger",
-        account: String = "database-key-v1"
+        account: String = "database-key-v1",
+        useDataProtectionKeychain: Bool = true
     ) {
         self.service = service
         self.account = account
+        self.useDataProtectionKeychain = useDataProtectionKeychain
     }
 
     public func loadOrCreateKey() throws -> Data {
@@ -45,7 +48,9 @@ public struct KeychainDatabaseKeyStore: DatabaseKeyStore {
 
         var item = baseQuery
         item[kSecValueData] = key
-        item[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        if useDataProtectionKeychain {
+            item[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        }
         item[kSecAttrSynchronizable] = kCFBooleanFalse
 
         let addStatus = SecItemAdd(item as CFDictionary, nil)
@@ -90,11 +95,15 @@ public struct KeychainDatabaseKeyStore: DatabaseKeyStore {
     }
 
     private var baseQuery: [CFString: Any] {
-        [
+        var query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,
-            kSecUseDataProtectionKeychain: kCFBooleanTrue as Any
+            kSecAttrSynchronizable: kCFBooleanFalse as Any
         ]
+        if useDataProtectionKeychain {
+            query[kSecUseDataProtectionKeychain] = kCFBooleanTrue
+        }
+        return query
     }
 }

@@ -15,7 +15,10 @@ enum SecuritySelfTest {
 
         let store = KeychainDatabaseKeyStore(
             service: "io.gymly.tydly.security-self-test.\(UUID().uuidString)",
-            account: "ephemeral-key"
+            account: "ephemeral-key",
+            // Ad-hoc CI signatures cannot carry Apple's provisioned Data Protection
+            // Keychain access group. Release validation exercises the default `true` path.
+            useDataProtectionKeychain: false
         )
         do {
             defer { try? store.deleteKey() }
