@@ -180,12 +180,19 @@ public actor RootCapabilityStore {
     /// after a stale refresh activated a successor. It validates identity and current policy
     /// but never retargets the operation or changes the active binding.
     public func withRecordedRootGenerationForRecovery<T: Sendable>(
+        operationID: String,
         rootGenerationID: String,
         _ operation: @Sendable (URL, RootGenerationDescriptor) async throws -> T
     ) async throws -> T {
         try beginExclusiveOperation()
         defer { endExclusiveOperation() }
-        guard let root = try await ledger.root(id: rootGenerationID) else {
+        guard let ledgerOperation = try await ledger.operation(id: operationID),
+              ledgerOperation.phase == .prepared
+                || ledgerOperation.phase == .applied
+                || ledgerOperation.phase == .needsRepair,
+              ledgerOperation.draft.sourceRootID == rootGenerationID
+                || ledgerOperation.draft.destinationRootID == rootGenerationID,
+              let root = try await ledger.root(id: rootGenerationID) else {
             throw RootCapabilityError.bindingUnavailable
         }
         let lease = try await resolveRecordedLease(root)

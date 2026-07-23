@@ -221,27 +221,79 @@ public actor EncryptedOperationLedger {
                 throw LedgerStoreError.rootBindingConflict
             }
             if replacingLegacyBindings {
-                let referencedLegacyCount = try Int.fetchOne(
-                    db,
+                let timestamp = date.timeIntervalSince1970
+                try db.execute(
                     sql: """
-                        SELECT COUNT(*)
-                        FROM roots
-                        WHERE purpose = 'legacy'
+                        INSERT INTO operationEvents (
+                            operationID, phase, timestamp, errorDomain, errorCode
+                        )
+                        SELECT operations.id,
+                               'needsRepair',
+                               ?,
+                               'capabilityUnavailable',
+                               NULL
+                        FROM operations
+                        WHERE operations.phase != 'needsRepair'
                           AND (
-                              EXISTS (
-                                  SELECT 1 FROM operations
-                                  WHERE sourceRootID = roots.id
-                                     OR destinationRootID = roots.id
+                              operations.sourceRootID IN (
+                                  SELECT id FROM roots WHERE purpose = 'legacy'
+                              )
+                              OR operations.destinationRootID IN (
+                                  SELECT id FROM roots WHERE purpose = 'legacy'
                               )
                           )
-                        """
-                ) ?? 0
-                guard referencedLegacyCount == 0 else {
-                    throw LedgerStoreError.repairRequired
-                }
+                        """,
+                    arguments: [timestamp]
+                )
+                try db.execute(
+                    sql: """
+                        UPDATE batches
+                        SET status = 'needsRepair', updatedAt = ?
+                        WHERE id IN (
+                            SELECT batchID FROM operations
+                            WHERE sourceRootID IN (
+                                SELECT id FROM roots WHERE purpose = 'legacy'
+                            )
+                            OR destinationRootID IN (
+                                SELECT id FROM roots WHERE purpose = 'legacy'
+                            )
+                        )
+                        """,
+                    arguments: [timestamp]
+                )
+                try db.execute(
+                    sql: """
+                        UPDATE operations
+                        SET phase = 'needsRepair',
+                            repairReason = 'capabilityUnavailable',
+                            updatedAt = ?
+                        WHERE phase != 'needsRepair'
+                          AND (
+                              sourceRootID IN (
+                                  SELECT id FROM roots WHERE purpose = 'legacy'
+                              )
+                              OR destinationRootID IN (
+                                  SELECT id FROM roots WHERE purpose = 'legacy'
+                              )
+                          )
+                        """,
+                    arguments: [timestamp]
+                )
                 try db.execute(sql: """
-                    DELETE FROM rootBindings WHERE purpose = 'legacy';
-                    DELETE FROM roots WHERE purpose = 'legacy';
+                    DELETE FROM rootBindings
+                    WHERE purpose = 'legacy'
+                      AND activeRootID NOT IN (
+                          SELECT sourceRootID FROM operations
+                          UNION
+                          SELECT destinationRootID FROM operations
+                      );
+                    DELETE FROM roots
+                    WHERE purpose = 'legacy'
+                      AND id NOT IN (
+                          SELECT sourceRootID FROM operations
+                          UNION
+                          SELECT destinationRootID FROM operations
+                      );
                     """)
             }
             for registration in registrations.sorted(by: {
@@ -1028,17 +1080,20 @@ public actor EncryptedOperationLedger {
                     updatedAt DOUBLE NOT NULL
                 );
 
-                CREATE TABLE rootSetState (
-                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
-                    revision INTEGER NOT NULL CHECK (revision >= 0)
-                );
-                INSERT INTO rootSetState (id, revision) VALUES (1, 0);
-
                 INSERT INTO rootBindings (
                     logicalRootID, activeRootID, purpose, status, updatedAt
                 )
                 SELECT logicalRootID, id, purpose, 'needsReauthorization', updatedAt
                 FROM roots;
+                """)
+        }
+        migrator.registerMigration("root-set-revision-v3") { db in
+            try db.execute(sql: """
+                CREATE TABLE rootSetState (
+                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+                    revision INTEGER NOT NULL CHECK (revision >= 0)
+                );
+                INSERT INTO rootSetState (id, revision) VALUES (1, 0);
                 """)
         }
         return migrator

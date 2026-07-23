@@ -11,7 +11,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
 
         let ledger = try fixture.openLedger()
         let schemaVersion = try await ledger.schemaVersion()
-        XCTAssertEqual(schemaVersion, 2)
+        XCTAssertEqual(schemaVersion, 3)
         try await ledger.close()
 
         let header = Data(try Data(contentsOf: fixture.databaseURL).prefix(16))
@@ -331,7 +331,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         let binding = try await ledger.rootBinding(logicalRootID: "legacy-root")
         let root = try await ledger.activeRoot(logicalRootID: "legacy-root")
         let schemaVersion = try await ledger.schemaVersion()
-        XCTAssertEqual(schemaVersion, 2)
+        XCTAssertEqual(schemaVersion, 3)
         XCTAssertEqual(binding?.status, .needsReauthorization)
         XCTAssertEqual(root?.descriptor.purpose, .legacy)
         XCTAssertEqual(root?.descriptor.identity.volumeID, "legacy")
@@ -384,6 +384,96 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? LedgerStoreError, .rootBindingConflict)
         }
+        try await ledger.close()
+    }
+
+    func testExistingV2DatabaseReceivesRootSetRevisionMigration() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        try createLegacyV2Database(
+            at: fixture.databaseURL,
+            keyStore: fixture.keyStore
+        )
+
+        let ledger = try fixture.openLedger()
+        let snapshot = try await ledger.rootBindingSnapshot()
+        let schemaVersion = try await ledger.schemaVersion()
+        XCTAssertEqual(schemaVersion, 3)
+        XCTAssertEqual(snapshot.revision, 0)
+        XCTAssertEqual(snapshot.bindings.first?.status, .needsReauthorization)
+        try await ledger.close()
+    }
+
+    func testReferencedLegacyOperationsAreHeldForRepairDuringConversion() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let ledger = try fixture.openLedger()
+        try await ledger.registerRoot(id: "legacy-source", bookmark: Data("source".utf8))
+        try await ledger.registerRoot(id: "legacy-destination", bookmark: Data("dest".utf8))
+
+        let intent = try LedgerOperationIntent(
+            id: "legacy-move",
+            batchID: "legacy-batch",
+            ordinal: 0,
+            kind: .move,
+            sourceRootID: "legacy-source",
+            sourcePath: ScopedRelativePath(rawValue: "file"),
+            destinationRootID: "legacy-destination",
+            destinationPath: ScopedRelativePath(rawValue: "file"),
+            expectedSourceIdentity: try fixture.sourceIdentity()
+        )
+        let authorization = try LedgerAuthorizationAuthenticator(keyStore: fixture.keyStore)
+            .authorizeUserApproval(
+                batchID: intent.batchID,
+                intents: [intent],
+                executionAuthorization: fixture.userApproval()
+            )
+        _ = try await ledger.prepareBatch(
+            id: intent.batchID,
+            operations: [
+                try LedgerOperationDraft(intent: intent, authorization: authorization)
+            ]
+        )
+
+        let snapshot = try await ledger.rootBindingSnapshot()
+        let source = try RootGenerationDescriptor(
+            id: "desktop-g0",
+            logicalRootID: "source.desktop",
+            generation: 0,
+            purpose: .sourceDesktop,
+            displayName: "Desktop",
+            identity: RootResourceIdentity(volumeID: "volume", fileID: "desktop")
+        )
+        let destination = try RootGenerationDescriptor(
+            id: "downloads-g0",
+            logicalRootID: "source.downloads",
+            generation: 0,
+            purpose: .sourceDownloads,
+            displayName: "Downloads",
+            identity: RootResourceIdentity(volumeID: "volume", fileID: "downloads")
+        )
+        try await ledger.registerRootGenerations(
+            [
+                RootGenerationRegistration(
+                    descriptor: source,
+                    bookmark: Data("desktop".utf8)
+                ),
+                RootGenerationRegistration(
+                    descriptor: destination,
+                    bookmark: Data("downloads".utf8)
+                )
+            ],
+            expectedRootSetRevision: snapshot.revision,
+            replacingLegacyBindings: true
+        )
+
+        let operation = try await ledger.operation(id: intent.id)
+        let batch = try await ledger.batch(id: intent.batchID)
+        XCTAssertEqual(operation?.phase, .needsRepair)
+        XCTAssertEqual(operation?.repairReason, .capabilityUnavailable)
+        XCTAssertEqual(batch?.status, .needsRepair)
+        let retainedLegacyRoot = try await ledger.root(id: "legacy-source")
+        XCTAssertNotNil(retainedLegacyRoot)
         try await ledger.close()
     }
 
@@ -664,6 +754,58 @@ private func createLegacyV1Database(
             INSERT INTO roots (
                 id, bookmark, bookmarkVersion, createdAt, updatedAt
             ) VALUES ('legacy-root', X'010203', 1, 1, 1);
+            """)
+    }
+    try database.close()
+}
+
+private func createLegacyV2Database(
+    at url: URL,
+    keyStore: any DatabaseKeyStore
+) throws {
+    try createLegacyV1Database(at: url, keyStore: keyStore)
+    guard let key = try keyStore.loadExistingKey() else {
+        throw LedgerStoreError.encryptionKeyUnavailable
+    }
+    var configuration = Configuration()
+    configuration.foreignKeysEnabled = true
+    configuration.prepareDatabase { db in
+        try db.usePassphrase(key)
+        _ = try db.cipherVersion
+    }
+    let database = try DatabaseQueue(path: url.path, configuration: configuration)
+    try database.write { db in
+        try db.execute(sql: """
+            ALTER TABLE roots
+                ADD COLUMN logicalRootID TEXT NOT NULL DEFAULT '';
+            ALTER TABLE roots
+                ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE roots
+                ADD COLUMN purpose TEXT NOT NULL DEFAULT 'legacy';
+            ALTER TABLE roots
+                ADD COLUMN displayName TEXT NOT NULL DEFAULT '';
+            ALTER TABLE roots
+                ADD COLUMN volumeID TEXT NOT NULL DEFAULT 'legacy';
+            ALTER TABLE roots
+                ADD COLUMN resourceID TEXT NOT NULL DEFAULT '';
+            UPDATE roots
+            SET logicalRootID = id, displayName = id, resourceID = id;
+            CREATE UNIQUE INDEX rootGenerationByLogicalID
+                ON roots(logicalRootID, generation);
+            CREATE TABLE rootBindings (
+                logicalRootID TEXT PRIMARY KEY NOT NULL,
+                activeRootID TEXT NOT NULL UNIQUE REFERENCES roots(id),
+                purpose TEXT NOT NULL,
+                status TEXT NOT NULL,
+                updatedAt DOUBLE NOT NULL
+            );
+            INSERT INTO rootBindings (
+                logicalRootID, activeRootID, purpose, status, updatedAt
+            )
+            SELECT logicalRootID, id, purpose, 'needsReauthorization', updatedAt
+            FROM roots;
+            INSERT INTO grdb_migrations (identifier)
+                VALUES ('root-capability-generations-v2');
             """)
     }
     try database.close()

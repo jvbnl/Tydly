@@ -306,6 +306,44 @@ final class RootCapabilityStoreTests: XCTestCase {
             purpose: .sourceDesktop,
             selectedURL: fixture.desktop
         )
+        let destination = try await fixture.store.registerPanelSelection(
+            logicalRootID: "destination.archive",
+            purpose: .destination,
+            selectedURL: fixture.destination
+        )
+        let intent = try LedgerOperationIntent(
+            id: "move-for-recovery",
+            batchID: "recovery-batch",
+            ordinal: 0,
+            kind: .move,
+            sourceRootID: first.id,
+            sourcePath: ScopedRelativePath(rawValue: "shot.png"),
+            destinationRootID: destination.id,
+            destinationPath: ScopedRelativePath(rawValue: "shot.png"),
+            expectedSourceIdentity: try LedgerFileIdentity(
+                volumeID: "volume",
+                fileID: "file",
+                byteCount: 1,
+                modifiedAt: Date(timeIntervalSince1970: 1),
+                fingerprint: "fingerprint"
+            )
+        )
+        let authorization = try LedgerAuthorizationAuthenticator(keyStore: fixture.keyStore)
+            .authorizeUserApproval(
+                batchID: intent.batchID,
+                intents: [intent],
+                executionAuthorization: Rules.authorizeUserApprovedExecution(
+                    subscription: .active
+                )
+            )
+        let draft = try LedgerOperationDraft(
+            intent: intent,
+            authorization: authorization
+        )
+        _ = try await fixture.ledger.prepareBatch(
+            id: draft.batchID,
+            operations: [draft]
+        )
         fixture.bookmarks.markLatestStale(for: fixture.desktop)
 
         do {
@@ -322,6 +360,7 @@ final class RootCapabilityStoreTests: XCTestCase {
         XCTAssertEqual(active?.descriptor.generation, 1)
 
         let recovered = try await fixture.store.withRecordedRootGenerationForRecovery(
+            operationID: draft.id,
             rootGenerationID: first.id
         ) { _, descriptor in
             descriptor
@@ -411,10 +450,12 @@ final class RootCapabilityStoreTests: XCTestCase {
     }
 }
 
-private final class CapabilityFixture {
+private final class CapabilityFixture: @unchecked Sendable {
     let directory: URL
     let desktop: URL
     let downloads: URL
+    let destination: URL
+    let keyStore = CapabilityKeyStore()
     let ledger: EncryptedOperationLedger
     let bookmarks = FakeBookmarkCodec()
     let inspector = FakeRootInspector()
@@ -426,6 +467,7 @@ private final class CapabilityFixture {
             .appendingPathComponent("TydlyCapabilityTests-\(UUID().uuidString)", isDirectory: true)
         desktop = directory.appendingPathComponent("Desktop", isDirectory: true)
         downloads = directory.appendingPathComponent("Downloads", isDirectory: true)
+        destination = directory.appendingPathComponent("Archive", isDirectory: true)
         try FileManager.default.createDirectory(
             at: desktop,
             withIntermediateDirectories: true
@@ -434,9 +476,13 @@ private final class CapabilityFixture {
             at: downloads,
             withIntermediateDirectories: true
         )
+        try FileManager.default.createDirectory(
+            at: destination,
+            withIntermediateDirectories: true
+        )
         ledger = try EncryptedOperationLedger(
             path: directory.appendingPathComponent("ledger.sqlite").path,
-            keyStore: CapabilityKeyStore()
+            keyStore: keyStore
         )
         inspector.setInspection(
             for: desktop,
@@ -445,6 +491,10 @@ private final class CapabilityFixture {
         inspector.setInspection(
             for: downloads,
             identity: try RootResourceIdentity(volumeID: "volume", fileID: "downloads")
+        )
+        inspector.setInspection(
+            for: destination,
+            identity: try RootResourceIdentity(volumeID: "volume", fileID: "archive")
         )
         let uuidSequence = UUIDSequence()
         store = RootCapabilityStore(
@@ -508,7 +558,7 @@ private final class FakeRootInspector: RootResourceInspecting, @unchecked Sendab
         if delay > 0 {
             try await Task.sleep(nanoseconds: delay)
         }
-        try queue.sync {
+        return try queue.sync {
             guard let inspection = inspections[url] else {
                 throw RootCapabilityError.bindingUnavailable
             }
