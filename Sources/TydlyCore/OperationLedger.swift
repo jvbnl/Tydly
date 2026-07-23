@@ -9,7 +9,7 @@ public enum LedgerValidationError: Error, Equatable, Sendable {
 
 /// A path relative to one explicit security-scoped root. Absolute paths, empty components,
 /// current/parent traversal, and NUL bytes are rejected before persistence.
-public struct ScopedRelativePath: RawRepresentable, Codable, Equatable, Hashable, Sendable {
+public struct ScopedRelativePath: Codable, Equatable, Hashable, Sendable {
     public let rawValue: String
 
     public init(rawValue: String) throws {
