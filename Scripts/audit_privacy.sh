@@ -15,7 +15,7 @@ require_true() {
 	local key="$1"
 	local plist="$2"
 	local value
-	value="$(plutil -extract "$key" raw -o - "$plist")"
+	value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist")"
 	if [[ "$value" != "true" ]]; then
 		echo "error: expected $key=true in $plist" >&2
 		exit 1
@@ -25,7 +25,7 @@ require_true() {
 reject_key() {
 	local key="$1"
 	local plist="$2"
-	if plutil -extract "$key" raw -o - "$plist" >/dev/null 2>&1; then
+	if /usr/libexec/PlistBuddy -c "Print :$key" "$plist" >/dev/null 2>&1; then
 		echo "error: forbidden entitlement $key found in $plist" >&2
 		exit 1
 	fi
