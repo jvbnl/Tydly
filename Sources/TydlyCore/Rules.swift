@@ -50,6 +50,7 @@ public enum Rules {
     public static func promoting(_ rule: FilingRule) -> FilingRule {
         var next = rule
         next.autonomy = cappedAutonomy(.auto, isSensitive: rule.isSensitive)
+        next.revision += 1
         return next
     }
 
@@ -59,6 +60,7 @@ public enum Rules {
         next.acceptsInARow += 1
         next.filedCount += 1
         next.confidence = min(1.0, rule.confidence + 0.04)
+        next.revision += 1
         return next
     }
 
@@ -75,6 +77,7 @@ public enum Rules {
             next.autonomy = .propose
             next.mistakesThisWeek = 0 // demotion consumes the week's tally
         }
+        next.revision += 1
         return next
     }
 
@@ -82,6 +85,7 @@ public enum Rules {
     public static func resettingWeek(_ rule: FilingRule) -> FilingRule {
         var next = rule
         next.mistakesThisWeek = 0
+        next.revision += 1
         return next
     }
 

@@ -25,8 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        if !AppModel.shared.hasCompletedOnboarding {
-            showOnboarding()
+        Task {
+            let model = AppModel.shared
+            let hasRequiredCapabilities = await model.hasRequiredFolderCapabilities()
+            if !model.hasCompletedOnboarding || !hasRequiredCapabilities {
+                showOnboarding()
+            }
         }
     }
 
@@ -37,7 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let root = OnboardingView(onFinish: { [weak self] in self?.dismissOnboarding() })
+        let root = OnboardingView(
+            startAtFolderScope: AppModel.shared.hasCompletedOnboarding,
+            onFinish: { [weak self] in self?.dismissOnboarding() }
+        )
             .environmentObject(AppModel.shared)
 
         let window = NSWindow(contentViewController: NSHostingController(rootView: root))

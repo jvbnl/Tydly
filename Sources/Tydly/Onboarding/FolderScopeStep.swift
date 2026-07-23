@@ -6,6 +6,8 @@ import TydlyCore
 /// button copy stays exact (CLAUDE.md: do not change).
 struct FolderScopeStep: View {
     let scope: FolderScope
+    let isAuthorizing: Bool
+    let errorMessage: String?
     var onAllow: () -> Void
 
     var body: some View {
@@ -14,17 +16,34 @@ struct FolderScopeStep: View {
                 .font(Typography.onboardingTitle)
                 .multilineTextAlignment(.center)
 
-            FolderRow(icon: "display", name: L.onboarding_desktop)
-            FolderRow(icon: "arrow.down.circle", name: L.onboarding_downloads)
+            FolderRow(
+                icon: "display",
+                name: L.onboarding_desktop,
+                accessibilityLabel: L.onboarding_folder_allowed(L.onboarding_desktop)
+            )
+            FolderRow(
+                icon: "arrow.down.circle",
+                name: L.onboarding_downloads,
+                accessibilityLabel: L.onboarding_folder_allowed(L.onboarding_downloads)
+            )
 
             Text(L.onboarding_scope_sub)
                 .font(Typography.onboardingSub)
                 .foregroundStyle(Palette.textSecondary)
                 .multilineTextAlignment(.center)
 
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(Typography.meta)
+                    .foregroundStyle(Palette.warningText)
+                    .multilineTextAlignment(.center)
+            }
+
             Spacer(minLength: 8)
 
             PillButton(L.onboarding_allow, style: .primary, fillWidth: true, action: onAllow)
+                .disabled(isAuthorizing)
+                .opacity(isAuthorizing ? 0.6 : 1)
         }
     }
 }
@@ -32,6 +51,7 @@ struct FolderScopeStep: View {
 private struct FolderRow: View {
     let icon: String
     let name: String
+    let accessibilityLabel: String
 
     var body: some View {
         HStack(spacing: 8) {
@@ -55,6 +75,6 @@ private struct FolderRow: View {
                 .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(name), allowed"))
+        .accessibilityLabel(Text(accessibilityLabel))
     }
 }

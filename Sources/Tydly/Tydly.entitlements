@@ -13,6 +13,11 @@
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 
+	<!-- The Data Protection Keychain derives Tydly's default access group from this App ID.
+	     build_app.sh expands AppIdentifierPrefix during manual CLI signing. -->
+	<key>com.apple.application-identifier</key>
+	<string>$(AppIdentifierPrefix)io.gymly.tydly</string>
+
 	<!-- Deliberately NO network entitlement. The privacy promise ("Nothing leaves
 	     this Mac") is made structurally true: without com.apple.security.network.client
 	     the sandbox cannot open an outbound connection, no matter what the code does.

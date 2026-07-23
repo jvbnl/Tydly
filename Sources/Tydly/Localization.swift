@@ -111,6 +111,15 @@ enum L {
     static var onboarding_scope_sub: String { s("The rest of your Mac stays off-limits.") }
     /// Copy = exact scope, do not change (CLAUDE.md).
     static var onboarding_allow: String { s("Allow these 2 folders") }
+    static var onboarding_select: String { s("Select") }
+    static var onboarding_select_desktop_message: String { s("Select your Desktop folder.") }
+    static var onboarding_select_downloads_message: String { s("Select your Downloads folder.") }
+    static var onboarding_scope_error: String {
+        s("Folder access wasn't granted. Nothing changed.")
+    }
+    static func onboarding_folder_allowed(_ name: String) -> String {
+        String(format: s("%@, allowed"), name)
+    }
 
     static var onboarding_name_title: String { s("Your archivist needs a name") }
     static var onboarding_name_own: String { s("own…") }

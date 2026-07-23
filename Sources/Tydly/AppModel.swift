@@ -1,11 +1,14 @@
 import Foundation
 import Combine
 import TydlyCore
+import TydlyMacEngine
+import TydlyPersistence
 
 /// The app-wide observable state for the macOS UI. Holds `TydlyCore` value types and the
 /// user-facing state machine; the rule *logic* lives in `TydlyCore.Rules`. There is no
 /// file engine yet, so intents mutate in-memory state — enough for the scaffold to feel
 /// live and for every screen to be reachable.
+@MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
 
@@ -32,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published var subscription: TydlyCore.Subscription = .trial(daysLeft: 30)
 
     private let defaults: UserDefaults
+    private var rootCapabilityStore: RootCapabilityStore?
 
     private enum Keys {
         static let onboarded = "tydly.onboarded"
@@ -133,6 +137,112 @@ final class AppModel: ObservableObject {
 
     func skipNaming(scope: FolderScope) {
         completeOnboarding(persona: Persona(name: Persona.fallbackName, colorIndex: 0), scope: scope)
+    }
+
+    enum FolderAuthorizationResult {
+        case success
+        case cancelled
+        case failed
+    }
+
+    func authorizeOnboardingFolders(
+        desktopRequest: RootAuthorizationRequest,
+        downloadsRequest: RootAuthorizationRequest
+    ) async -> FolderAuthorizationResult {
+        do {
+            let store = try capabilityStore()
+            let panel = RootAuthorizationPanel()
+            let desktop = try panel.selectDirectory(desktopRequest)
+            if Task.isCancelled {
+                desktop.stopAccessingSecurityScopedResource()
+                throw CancellationError()
+            }
+            let downloads: URL
+            do {
+                downloads = try panel.selectDirectory(downloadsRequest)
+            } catch {
+                desktop.stopAccessingSecurityScopedResource()
+                throw error
+            }
+            if Task.isCancelled {
+                desktop.stopAccessingSecurityScopedResource()
+                downloads.stopAccessingSecurityScopedResource()
+                throw CancellationError()
+            }
+            _ = try await store.registerPanelSelections([
+                RootPanelSelection(
+                    logicalRootID: "source.desktop",
+                    purpose: .sourceDesktop,
+                    url: desktop
+                ),
+                RootPanelSelection(
+                    logicalRootID: "source.downloads",
+                    purpose: .sourceDownloads,
+                    url: downloads
+                )
+            ])
+            return .success
+        } catch RootCapabilityError.selectionCancelled {
+            return .cancelled
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .failed
+        }
+    }
+
+    func hasRequiredFolderCapabilities() async -> Bool {
+        do {
+            let store = try capabilityStore()
+            let required: Set<String> = [
+                "source.desktop",
+                "source.downloads"
+            ]
+            guard try await store.hasActiveBindings(required) else {
+                return false
+            }
+            for logicalRootID in required {
+                _ = try await store.withResolvedRoot(logicalRootID: logicalRootID) { _, _ in
+                    true
+                }
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func capabilityStore() throws -> RootCapabilityStore {
+        if let rootCapabilityStore {
+            return rootCapabilityStore
+        }
+
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let ledgerURL = appSupport
+            .appendingPathComponent("Tydly", isDirectory: true)
+            .appendingPathComponent("Ledger", isDirectory: true)
+            .appendingPathComponent("Active", isDirectory: true)
+            .appendingPathComponent("ledger.sqlite")
+
+        #if DEBUG
+        let useDataProtectionKeychain = false
+        #else
+        let useDataProtectionKeychain = true
+        #endif
+        let ledger = try EncryptedOperationLedger(
+            path: ledgerURL.path,
+            keyStore: KeychainDatabaseKeyStore(
+                useDataProtectionKeychain: useDataProtectionKeychain
+            )
+        )
+        let store = RootCapabilityStore(ledger: ledger)
+        rootCapabilityStore = store
+        return store
     }
 
     private func persist() {

@@ -9,6 +9,10 @@ struct TydlyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel.shared
 
+    init() {
+        SecuritySelfTest.runIfRequested()
+    }
+
     var body: some Scene {
         MenuBarExtra {
             PopoverRootView()

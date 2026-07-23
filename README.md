@@ -9,6 +9,9 @@ leaves the Mac** — no account, no cloud, no network entitlement.
 This repository is the native implementation of the design handoff in
 [`DesignHandoff/`](DesignHandoff/). The HTML files there are the visual source of truth;
 `DesignHandoff/DESIGN.md` holds the tokens and `DesignHandoff/README.md` the screen specs.
+The reviewed backend threat model and AI design live in
+[`Documentation/SECURITY.md`](Documentation/SECURITY.md) and
+[`Documentation/AI_ENGINE.md`](Documentation/AI_ENGINE.md).
 
 ## Status
 
@@ -23,25 +26,31 @@ popover (all tidy / decision / working) → onboarding.**
 | Popover: All tidy, Decision waiting, Working, Observing | ✅ |
 | Onboarding: Privacy → Folder scope → Naming | ✅ |
 | The 10 product rules encoded + unit-tested in `TydlyCore` | ✅ |
+| Security-first execution policy + local Foundation Models boundary | ✅ foundation |
+| Encrypted operation ledger, inverse undo records, and crash reconciliation | ✅ foundation |
+| Encrypted security-scoped Desktop/Downloads capability generations | ✅ foundation |
 | Finder demonstration, whisper bar, error states, rules pane, settings, weekly note | ⏳ next |
-| Real file engine (FSEvents, journal/undo, security-scoped bookmarks) | ⏳ next |
+| Real file engine (FSEvents, extraction, race-safe moves) | ⏳ next |
 
-There is **no file engine yet** — state is seeded from `SampleData` so every screen renders
-the real design, and intents (approve / skip / undo) mutate in-memory state so the popover
-feels live.
+There is **no watcher or file mover yet** — state remains seeded from `SampleData`. The
+encrypted ledger can reconcile intent and onboarding can persist least-privilege folder
+grants, but nothing inventories or mutates user files.
 
 ## Requirements
 
-- macOS 13 (Ventura) or later — `MenuBarExtra` requires it.
-- The macOS SDK: **Xcode.app or the Command Line Tools** installed once
-  (`xcode-select --install`). You never open the Xcode IDE — everything is command-line.
+- An Apple-silicon Mac running macOS 26 or later.
+- Apple Intelligence enabled for semantic reranking. Tydly remains deterministic and
+  ask-first when the on-device model is unavailable.
+- Swift 6.2 and the macOS 26 SDK from Xcode 26 or matching Command Line Tools. You never
+  open the Xcode IDE — everything is command-line.
 
 ## Run it
 
 ```sh
 make run      # debug build, launches Tydly in the menu bar (Ctrl-C to quit)
-make test     # runs the TydlyCore rule tests
+make test     # unit suite + abrupt-process ledger recovery probes
 make app      # assembles dist/Tydly.app (a proper menu-bar agent bundle)
+make audit    # verifies signing, sandbox, and no-network invariants
 make open     # build the .app and launch it
 ```
 
@@ -56,17 +65,28 @@ switcher at the foot of the popover: **All tidy · Decision · Working · Observ
 
 ## Architecture
 
-Two targets, so a future move to other platforms stays cheap and the rules stay testable:
+Five targets keep policy testable and prevent the model from receiving filesystem powers:
 
 - **`TydlyCore`** — pure Foundation. Domain types (`AgentState`, `FilingRule`, `Decision`,
-  …) and the rule-enforcement logic (`Rules`). No SwiftUI, AppKit, or Combine.
+  …), path-free AI contracts, and rule/execution policy. No SwiftUI, AppKit, or Combine.
+- **`TydlyAI`** — the constrained, tool-free adapter to Apple's on-device Foundation Models
+  framework. It returns allowlisted project and evidence IDs only.
+- **`TydlyPersistence`** — the single-writer SQLCipher ledger and Keychain key store. It
+  records authorization, relative-path intent, transitions, inverse undo, and repair state,
+  but owns no move API. Authorization is bound to the exact batch digest and authenticated
+  with a ledger-key-derived HMAC; unresolved repair blocks all new mutation intent.
+- **`TydlyMacEngine`** — immutable bookmark generations, fail-closed root policy, and
+  closure-scoped balanced access. It contains no watcher or mover yet.
 - **`Tydly`** — the macOS executable. SwiftUI `MenuBarExtra` for the icon + popover, a thin
   AppKit `AppDelegate` for the floating onboarding window, `AppModel` (`ObservableObject`)
   wrapping the core.
 
 ```
 Sources/
-  TydlyCore/         AgentState · Domain · Rules · SampleData
+  TydlyCore/         AgentState · Domain · Rules · AIContracts · ExecutionPolicy · SampleData
+  TydlyAI/           FoundationModelClassifier
+  TydlyPersistence/  DatabaseKeyStore · EncryptedOperationLedger · quarantine
+  TydlyMacEngine/    Bookmark adapters · root policy · capability store
   Tydly/
     TydlyApp.swift            @main, MenuBarExtra scene
     AppDelegate.swift         onboarding window (whisper bar later)
@@ -76,7 +96,11 @@ Sources/
     Popover/                  Root router + AllTidy · Decision · Working · Observing (+ DebugStateBar)
     Onboarding/              OnboardingView · Privacy · FolderScope · Naming · PageControl
     Localization.swift + Resources/en.lproj/Localizable.strings
-Tests/TydlyCoreTests/         RulesTests · StateTests
+Tests/
+  TydlyCoreTests/             Rules · State · ExecutionPolicy
+  TydlyAITests/               Allowlist · sensitivity · prompt-boundary validation
+  TydlyPersistenceTests/      Encryption · recovery · inverse undo · backup · quarantine
+  TydlyMacEngineTests/        Policy · atomic selection · stale/revoked access · CAS
 ```
 
 ### Privacy is structural
@@ -84,7 +108,20 @@ Tests/TydlyCoreTests/         RulesTests · StateTests
 `Sources/Tydly/Tydly.entitlements` enables the App Sandbox and user-selected file access but
 **deliberately omits `com.apple.security.network.client`** — signed with these entitlements,
 the app *cannot* open an outbound connection. `LSUIElement` in `Info.plist` keeps it a
-menu-bar agent (no Dock icon). Classification will run fully on-device.
+menu-bar agent (no Dock icon). Development app bundles are ad-hoc signed with this same
+entitlement set, and CI audits both source and signed output. Classification uses only
+`SystemLanguageModel`; it has no tools and no cloud fallback.
+
+The ledger uses SQLCipher 4.17.0 through Zetetic's managed GRDB 7.11.1 fork, both pinned to
+immutable revisions. Its 256-bit key is nonsynchronizing. Production defaults to the Data
+Protection Keychain and requires a provisioned signing identity; ad-hoc CI verifies local
+Keychain plumbing separately because it cannot impersonate Apple's restricted access group.
+
+Desktop and Downloads are selected through separate `NSOpenPanel` Powerbox grants and
+committed atomically. Bookmarks resolve without UI, mounting, or path fallback. Local,
+non-provider, non-overlapping policy and immutable identity are rechecked on every use.
+A ledger revision CAS plus crash-releasing process lock protects validation across stores;
+historical recovery also reserves its referenced nonterminal operation.
 
 ## The ten non-negotiable rules
 
@@ -98,6 +135,7 @@ skipped decisions self-mute. The full list is in `DesignHandoff/CLAUDE.md` and t
 
 ## Note on the build environment
 
-The package is verified on macOS 14 with Apple Swift 5.10: `swift build`, all 13
-`TydlyCore` tests, release app assembly, and a detached app-bundle launch pass. Interactive
-menu-bar behavior and pixel fidelity still need checking on a logged-in Mac with `make run`.
+The package is verified by an Apple-silicon macOS 26 runner: `swift build`, 70 Core/AI/
+persistence/capability tests, abrupt-process recovery probes, signed release app assembly,
+privacy audit, and a detached app-bundle launch. Powerbox behavior, menu-bar interaction,
+and pixel fidelity still need checking on a logged-in Mac with `make run`.
