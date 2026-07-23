@@ -147,8 +147,14 @@ public actor EncryptedOperationLedger {
             try Self.verifyPhysicalIntegrity(database)
         }
         try Self.migrator.migrate(database)
-        try database.write { db in
-            try db.execute(sql: "DELETE FROM operationRecoveryReservations")
+        do {
+            let capabilityLock = try RootCapabilityProcessLock(databasePath: path)
+            defer { capabilityLock.close() }
+            try database.write { db in
+                try db.execute(sql: "DELETE FROM operationRecoveryReservations")
+            }
+        } catch LedgerStoreError.rootCapabilityBusy {
+            // A live process owns the reservation; preserve it so transitions remain blocked.
         }
         try Self.verifyIntegrity(database)
         try Self.verifyAuthorizationIntegrity(database, keyStore: keyStore)

@@ -404,13 +404,16 @@ final class RootCapabilityStoreTests: XCTestCase {
             operationID: draft.id,
             rootGenerationID: first.id
         ) { _, descriptor in
+            let reopened = try fixture.openLedger()
             do {
-                _ = try await fixture.ledger.transition(
+                _ = try await reopened.transition(
                     operationID: draft.id,
                     to: .aborted
                 )
+                try await reopened.close()
                 return (descriptor, false)
             } catch LedgerStoreError.operationReserved {
+                try await reopened.close()
                 return (descriptor, true)
             }
         }
@@ -562,6 +565,13 @@ private final class CapabilityFixture: @unchecked Sendable {
 
     func remove() {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    func openLedger() throws -> EncryptedOperationLedger {
+        try EncryptedOperationLedger(
+            path: directory.appendingPathComponent("ledger.sqlite").path,
+            keyStore: keyStore
+        )
     }
 }
 
