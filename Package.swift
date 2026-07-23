@@ -3,12 +3,13 @@ import PackageDescription
 
 // Tydly — a local, trust-earning file archivist that lives in the macOS menu bar.
 //
-// Two targets, deliberately:
+// Four targets, deliberately:
 //   • TydlyCore  — pure Foundation. Domain model + the rule-enforcement logic for the
 //                  ten non-negotiable product rules. No SwiftUI, AppKit, or Combine, so
 //                  it stays unit-testable and portable to other platforms later.
 //   • TydlyAI    — the constrained, fully local Foundation Models adapter. It can rank
 //                  allowlisted projects but has no filesystem or networking capabilities.
+//   • TydlyPersistence — the encrypted SQLCipher operation ledger and Keychain key store.
 //   • Tydly      — the macOS executable. SwiftUI `MenuBarExtra` + a thin AppKit
 //                  `AppDelegate` for the onboarding window.
 //
@@ -22,7 +23,18 @@ let package = Package(
     products: [
         .executable(name: "Tydly", targets: ["Tydly"]),
         .library(name: "TydlyCore", targets: ["TydlyCore"]),
-        .library(name: "TydlyAI", targets: ["TydlyAI"])
+        .library(name: "TydlyAI", targets: ["TydlyAI"]),
+        .library(name: "TydlyPersistence", targets: ["TydlyPersistence"])
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/sqlcipher/GRDB.swift.git",
+            exact: "7.11.1"
+        ),
+        .package(
+            url: "https://github.com/sqlcipher/SQLCipher.swift.git",
+            exact: "4.17.0"
+        )
     ],
     targets: [
         .target(
@@ -31,6 +43,16 @@ let package = Package(
         .target(
             name: "TydlyAI",
             dependencies: ["TydlyCore"]
+        ),
+        .target(
+            name: "TydlyPersistence",
+            dependencies: [
+                "TydlyCore",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ],
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]
         ),
         .executableTarget(
             name: "Tydly",
@@ -64,6 +86,10 @@ let package = Package(
         .testTarget(
             name: "TydlyAITests",
             dependencies: ["TydlyAI", "TydlyCore"]
+        ),
+        .testTarget(
+            name: "TydlyPersistenceTests",
+            dependencies: ["TydlyPersistence", "TydlyCore"]
         )
     ]
 )

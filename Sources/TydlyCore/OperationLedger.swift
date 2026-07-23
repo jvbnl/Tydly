@@ -193,6 +193,20 @@ public struct LedgerOperation: Identifiable, Codable, Equatable, Sendable {
     public let updatedAt: Date
 
     public var id: String { draft.id }
+
+    public init(
+        draft: LedgerOperationDraft,
+        phase: LedgerOperationPhase,
+        observedDestinationIdentity: LedgerFileIdentity?,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.draft = draft
+        self.phase = phase
+        self.observedDestinationIdentity = observedDestinationIdentity
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 }
 
 public enum LedgerBatchStatus: String, Codable, Equatable, Sendable {
@@ -208,6 +222,13 @@ public struct LedgerBatch: Identifiable, Codable, Equatable, Sendable {
     public let status: LedgerBatchStatus
     public let createdAt: Date
     public let updatedAt: Date
+
+    public init(id: String, status: LedgerBatchStatus, createdAt: Date, updatedAt: Date) {
+        self.id = id
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 }
 
 public struct LedgerEvent: Identifiable, Codable, Equatable, Sendable {
@@ -217,6 +238,22 @@ public struct LedgerEvent: Identifiable, Codable, Equatable, Sendable {
     public let timestamp: Date
     public let errorDomain: String?
     public let errorCode: Int?
+
+    public init(
+        id: Int64,
+        operationID: String,
+        phase: LedgerOperationPhase,
+        timestamp: Date,
+        errorDomain: String?,
+        errorCode: Int?
+    ) {
+        self.id = id
+        self.operationID = operationID
+        self.phase = phase
+        self.timestamp = timestamp
+        self.errorDomain = errorDomain
+        self.errorCode = errorCode
+    }
 }
 
 public enum FileSystemObservation: Equatable, Sendable {
@@ -300,7 +337,9 @@ public enum LedgerTransition {
              (.prepared, .aborted),
              (.prepared, .needsRepair),
              (.applied, .committed),
-             (.applied, .needsRepair):
+             (.applied, .needsRepair),
+             (.committed, .needsRepair),
+             (.aborted, .needsRepair):
             return true
         default:
             return false

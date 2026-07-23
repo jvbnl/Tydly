@@ -103,15 +103,11 @@ final class OperationLedgerTests: XCTestCase {
         XCTAssertTrue(LedgerTransition.allows(from: .prepared, to: .needsRepair))
         XCTAssertTrue(LedgerTransition.allows(from: .applied, to: .committed))
         XCTAssertTrue(LedgerTransition.allows(from: .applied, to: .needsRepair))
+        XCTAssertTrue(LedgerTransition.allows(from: .committed, to: .needsRepair))
+        XCTAssertTrue(LedgerTransition.allows(from: .aborted, to: .needsRepair))
 
-        for terminal in [
-            LedgerOperationPhase.committed,
-            .aborted,
-            .needsRepair
-        ] {
-            for next in LedgerOperationPhase.allCases {
-                XCTAssertFalse(LedgerTransition.allows(from: terminal, to: next))
-            }
+        for next in LedgerOperationPhase.allCases {
+            XCTAssertFalse(LedgerTransition.allows(from: .needsRepair, to: next))
         }
     }
 
