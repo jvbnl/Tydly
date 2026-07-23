@@ -136,10 +136,12 @@ local model server.
 
 `TydlyPersistence` owns no move API. It uses SQLCipher 4.17.0 through Zetetic's managed
 GRDB 7.11.1 fork, pinned in `Package.resolved`. Existing stores never generate replacement
-keys. Production defaults to a nonsynchronizing Data Protection Keychain key; this path
+keys. Authorization is SHA-256-bound to the exact ordered batch and authenticated with an
+HKDF-separated HMAC from the ledger key; any unresolved repair globally blocks new mutation
+intent. Production defaults to a nonsynchronizing Data Protection Keychain key; this path
 requires a provisioned signing identity, while ad-hoc CI can only verify legacy local
-Keychain plumbing. Run the signed app with `--verify-data-protection-keychain` as a
-provisioned release gate.
+Keychain plumbing. Run the signed app with
+`--verify-data-protection-keychain` as a provisioned release gate.
 
 ## The ten non-negotiable rules — DO NOT WEAKEN
 

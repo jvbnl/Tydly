@@ -72,7 +72,8 @@ Four targets keep policy testable and prevent the model from receiving filesyste
   framework. It returns allowlisted project and evidence IDs only.
 - **`TydlyPersistence`** — the single-writer SQLCipher ledger and Keychain key store. It
   records authorization, relative-path intent, transitions, inverse undo, and repair state,
-  but owns no move API.
+  but owns no move API. Authorization is bound to the exact batch digest and authenticated
+  with a ledger-key-derived HMAC; unresolved repair blocks all new mutation intent.
 - **`Tydly`** — the macOS executable. SwiftUI `MenuBarExtra` for the icon + popover, a thin
   AppKit `AppDelegate` for the floating onboarding window, `AppModel` (`ObservableObject`)
   wrapping the core.

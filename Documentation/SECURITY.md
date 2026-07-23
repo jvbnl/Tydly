@@ -154,7 +154,12 @@ PRAGMA foreign_keys = ON;
 The schema records immutable root generations, batches, operations, typed authorization,
 relative paths, expected/observed identities, exact inverse links, repair reasons, and an
 append-only event sequence. It rejects root retargeting, no-op/inconsistent intent,
-destination identity rewrites, and active resource conflicts.
+destination identity rewrites, and active resource conflicts. Authorization carries a
+canonical SHA-256 digest of the entire ordered batch plus an HKDF-separated HMAC derived from
+the device-only ledger key. The authenticator requires an approved deterministic execution
+result, and preparation verifies every opaque receipt, so serialized callers cannot copy or
+forge consent for added or changed operations. Any `needsRepair` operation globally blocks
+new mutation intent and keeps its resources reserved.
 
 The 256-bit database key is nonsynchronizing and never stored in defaults, the database, or
 source code. Production defaults to `kSecUseDataProtectionKeychain` with
