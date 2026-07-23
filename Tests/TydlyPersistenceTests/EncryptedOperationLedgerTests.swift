@@ -11,7 +11,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
 
         let ledger = try fixture.openLedger()
         let schemaVersion = try await ledger.schemaVersion()
-        XCTAssertEqual(schemaVersion, 3)
+        XCTAssertEqual(schemaVersion, 4)
         try await ledger.close()
 
         let header = Data(try Data(contentsOf: fixture.databaseURL).prefix(16))
@@ -331,7 +331,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         let binding = try await ledger.rootBinding(logicalRootID: "legacy-root")
         let root = try await ledger.activeRoot(logicalRootID: "legacy-root")
         let schemaVersion = try await ledger.schemaVersion()
-        XCTAssertEqual(schemaVersion, 3)
+        XCTAssertEqual(schemaVersion, 4)
         XCTAssertEqual(binding?.status, .needsReauthorization)
         XCTAssertEqual(root?.descriptor.purpose, .legacy)
         XCTAssertEqual(root?.descriptor.identity.volumeID, "legacy")
@@ -398,9 +398,26 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         let ledger = try fixture.openLedger()
         let snapshot = try await ledger.rootBindingSnapshot()
         let schemaVersion = try await ledger.schemaVersion()
-        XCTAssertEqual(schemaVersion, 3)
+        XCTAssertEqual(schemaVersion, 4)
         XCTAssertEqual(snapshot.revision, 0)
         XCTAssertEqual(snapshot.bindings.first?.status, .needsReauthorization)
+        try await ledger.close()
+    }
+
+    func testExistingV2WithBackportedRootSetStateMigratesIdempotently() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        try createLegacyV2Database(
+            at: fixture.databaseURL,
+            keyStore: fixture.keyStore,
+            includesRootSetState: true
+        )
+
+        let ledger = try fixture.openLedger()
+        let snapshot = try await ledger.rootBindingSnapshot()
+        let schemaVersion = try await ledger.schemaVersion()
+        XCTAssertEqual(schemaVersion, 4)
+        XCTAssertEqual(snapshot.revision, 9)
         try await ledger.close()
     }
 
@@ -761,7 +778,8 @@ private func createLegacyV1Database(
 
 private func createLegacyV2Database(
     at url: URL,
-    keyStore: any DatabaseKeyStore
+    keyStore: any DatabaseKeyStore,
+    includesRootSetState: Bool = false
 ) throws {
     try createLegacyV1Database(at: url, keyStore: keyStore)
     guard let key = try keyStore.loadExistingKey() else {
@@ -807,6 +825,15 @@ private func createLegacyV2Database(
             INSERT INTO grdb_migrations (identifier)
                 VALUES ('root-capability-generations-v2');
             """)
+        if includesRootSetState {
+            try db.execute(sql: """
+                CREATE TABLE rootSetState (
+                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+                    revision INTEGER NOT NULL CHECK (revision >= 0)
+                );
+                INSERT INTO rootSetState (id, revision) VALUES (1, 9);
+                """)
+        }
     }
     try database.close()
 }

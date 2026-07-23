@@ -32,6 +32,8 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
     case authorizationNotGranted
     case authorizationTagInvalid
     case repairRequired
+    case rootCapabilityBusy
+    case operationReserved
 }
 
 public struct LedgerRootRecord: Identifiable, Equatable, Sendable {
@@ -109,6 +111,11 @@ public struct RootGenerationRegistration: Sendable {
     }
 }
 
+package struct OperationRecoveryReservation: Sendable {
+    package let operationID: String
+    package let token: String
+}
+
 /// Single-writer encrypted source of truth for move intent and recovery. This target owns no
 /// filesystem mutation API: an engine must commit `prepared`, perform one validated action,
 /// then compare-and-swap the operation to `applied` and `committed`.
@@ -140,6 +147,9 @@ public actor EncryptedOperationLedger {
             try Self.verifyPhysicalIntegrity(database)
         }
         try Self.migrator.migrate(database)
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM operationRecoveryReservations")
+        }
         try Self.verifyIntegrity(database)
         try Self.verifyAuthorizationIntegrity(database, keyStore: keyStore)
         try FileManager.default.setAttributes(
@@ -151,6 +161,62 @@ public actor EncryptedOperationLedger {
 
     public func close() throws {
         try database.close()
+    }
+
+    package func acquireRootCapabilityProcessLock() throws -> RootCapabilityProcessLock {
+        try RootCapabilityProcessLock(databasePath: path)
+    }
+
+    package func reserveRecoveryOperation(
+        operationID: String,
+        rootGenerationID: String,
+        at date: Date = Date()
+    ) throws -> OperationRecoveryReservation {
+        try database.write { db in
+            guard let operation = try Self.fetchOperation(id: operationID, from: db),
+                  operation.phase == .prepared
+                    || operation.phase == .applied
+                    || operation.phase == .needsRepair,
+                  operation.draft.sourceRootID == rootGenerationID
+                    || operation.draft.destinationRootID == rootGenerationID else {
+                throw LedgerStoreError.operationNotFound
+            }
+            let token = UUID().uuidString
+            let reservationCount = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM operationRecoveryReservations
+                    WHERE operationID = ?
+                    """,
+                arguments: [operationID]
+            ) ?? 0
+            guard reservationCount == 0 else {
+                throw LedgerStoreError.operationReserved
+            }
+            try db.execute(
+                sql: """
+                    INSERT INTO operationRecoveryReservations (
+                        operationID, token, createdAt
+                    ) VALUES (?, ?, ?)
+                    """,
+                arguments: [operationID, token, date.timeIntervalSince1970]
+            )
+            return OperationRecoveryReservation(operationID: operationID, token: token)
+        }
+    }
+
+    package func releaseRecoveryOperation(
+        _ reservation: OperationRecoveryReservation
+    ) throws {
+        try database.write { db in
+            try db.execute(
+                sql: """
+                    DELETE FROM operationRecoveryReservations
+                    WHERE operationID = ? AND token = ?
+                    """,
+                arguments: [reservation.operationID, reservation.token]
+            )
+        }
     }
 
     package func registerRoot(
@@ -637,6 +703,17 @@ public actor EncryptedOperationLedger {
         }
 
         return try database.write { db in
+            let reservationCount = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM operationRecoveryReservations
+                    WHERE operationID = ?
+                    """,
+                arguments: [operationID]
+            ) ?? 0
+            guard reservationCount == 0 else {
+                throw LedgerStoreError.operationReserved
+            }
             guard let current = try Self.fetchOperation(id: operationID, from: db) else {
                 throw LedgerStoreError.operationNotFound
             }
@@ -1089,11 +1166,21 @@ public actor EncryptedOperationLedger {
         }
         migrator.registerMigration("root-set-revision-v3") { db in
             try db.execute(sql: """
-                CREATE TABLE rootSetState (
+                CREATE TABLE IF NOT EXISTS rootSetState (
                     id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
                     revision INTEGER NOT NULL CHECK (revision >= 0)
                 );
-                INSERT INTO rootSetState (id, revision) VALUES (1, 0);
+                INSERT OR IGNORE INTO rootSetState (id, revision) VALUES (1, 0);
+                """)
+        }
+        migrator.registerMigration("operation-recovery-reservations-v4") { db in
+            try db.execute(sql: """
+                CREATE TABLE operationRecoveryReservations (
+                    operationID TEXT PRIMARY KEY NOT NULL
+                        REFERENCES operations(id) ON DELETE CASCADE,
+                    token TEXT NOT NULL UNIQUE,
+                    createdAt DOUBLE NOT NULL
+                );
                 """)
         }
         return migrator

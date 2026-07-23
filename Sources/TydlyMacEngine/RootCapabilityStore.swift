@@ -56,6 +56,8 @@ public actor RootCapabilityStore {
         }
         try beginExclusiveOperation()
         defer { endExclusiveOperation() }
+        let processLock = try await acquireProcessLock()
+        defer { processLock.close() }
 
         guard !selections.isEmpty,
               Set(selections.map(\.logicalRootID)).count == selections.count else {
@@ -149,6 +151,8 @@ public actor RootCapabilityStore {
     ) async throws -> T {
         try beginExclusiveOperation()
         defer { endExclusiveOperation() }
+        let processLock = try await acquireProcessLock()
+        defer { processLock.close() }
         let lease = try await resolveLease(
             logicalRootID: logicalRootID,
             expectedRootGenerationID: nil
@@ -165,6 +169,8 @@ public actor RootCapabilityStore {
     ) async throws -> T {
         try beginExclusiveOperation()
         defer { endExclusiveOperation() }
+        let processLock = try await acquireProcessLock()
+        defer { processLock.close() }
         guard let root = try await ledger.root(id: rootGenerationID) else {
             throw RootCapabilityError.bindingUnavailable
         }
@@ -186,18 +192,26 @@ public actor RootCapabilityStore {
     ) async throws -> T {
         try beginExclusiveOperation()
         defer { endExclusiveOperation() }
-        guard let ledgerOperation = try await ledger.operation(id: operationID),
-              ledgerOperation.phase == .prepared
-                || ledgerOperation.phase == .applied
-                || ledgerOperation.phase == .needsRepair,
-              ledgerOperation.draft.sourceRootID == rootGenerationID
-                || ledgerOperation.draft.destinationRootID == rootGenerationID,
-              let root = try await ledger.root(id: rootGenerationID) else {
+        let processLock = try await acquireProcessLock()
+        defer { processLock.close() }
+        let reservation = try await ledger.reserveRecoveryOperation(
+            operationID: operationID,
+            rootGenerationID: rootGenerationID
+        )
+        guard let root = try await ledger.root(id: rootGenerationID) else {
+            try? await ledger.releaseRecoveryOperation(reservation)
             throw RootCapabilityError.bindingUnavailable
         }
-        let lease = try await resolveRecordedLease(root)
-        defer { lease.close() }
-        return try await operation(lease.url, lease.descriptor)
+        do {
+            let lease = try await resolveRecordedLease(root)
+            defer { lease.close() }
+            let result = try await operation(lease.url, lease.descriptor)
+            try await ledger.releaseRecoveryOperation(reservation)
+            return result
+        } catch {
+            try? await ledger.releaseRecoveryOperation(reservation)
+            throw error
+        }
     }
 
     public func hasActiveBindings(_ logicalRootIDs: Set<String>) async throws -> Bool {
@@ -216,6 +230,8 @@ public actor RootCapabilityStore {
     ) async throws {
         try beginExclusiveOperation()
         defer { endExclusiveOperation() }
+        let processLock = try await acquireProcessLock()
+        defer { processLock.close() }
         try await markNeedsReauthorizationWithoutLock(
             logicalRootID,
             expectedActiveRootID: expectedActiveRootID
@@ -529,6 +545,14 @@ public actor RootCapabilityStore {
 
     private func endExclusiveOperation() {
         operationInProgress = false
+    }
+
+    private func acquireProcessLock() async throws -> RootCapabilityProcessLock {
+        do {
+            return try await ledger.acquireRootCapabilityProcessLock()
+        } catch LedgerStoreError.rootCapabilityBusy {
+            throw RootCapabilityError.operationInProgress
+        }
     }
 }
 

@@ -268,6 +268,47 @@ final class RootCapabilityStoreTests: XCTestCase {
         try await fixture.ledger.close()
     }
 
+    func testLedgerLockSerializesDistinctCapabilityStores() async throws {
+        let fixture = try CapabilityFixture()
+        defer { fixture.remove() }
+        fixture.inspector.setInspectionDelay(nanoseconds: 200_000_000)
+        let secondStore = RootCapabilityStore(
+            ledger: fixture.ledger,
+            bookmarkCodec: fixture.bookmarks,
+            inspector: fixture.inspector,
+            scopeAccessor: fixture.scopes,
+            trustedRoots: FakeTrustedRootLocator(
+                desktop: fixture.desktop,
+                downloads: fixture.downloads
+            )
+        )
+
+        let first = Task {
+            try await fixture.store.registerPanelSelection(
+                logicalRootID: "source.desktop",
+                purpose: .sourceDesktop,
+                selectedURL: fixture.desktop
+            )
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        do {
+            _ = try await secondStore.registerPanelSelection(
+                logicalRootID: "source.downloads",
+                purpose: .sourceDownloads,
+                selectedURL: fixture.downloads
+            )
+            XCTFail("separate stores must share one process/file capability lock")
+        } catch {
+            XCTAssertEqual(error as? RootCapabilityError, .operationInProgress)
+        }
+        first.cancel()
+        _ = try? await first.value
+        let bindings = try await fixture.ledger.rootBindings()
+        XCTAssertTrue(bindings.isEmpty)
+        try await fixture.ledger.close()
+    }
+
     func testStaleBookmarkRefreshesOnlyAfterIdentityMatches() async throws {
         let fixture = try CapabilityFixture()
         defer { fixture.remove() }
@@ -363,9 +404,18 @@ final class RootCapabilityStoreTests: XCTestCase {
             operationID: draft.id,
             rootGenerationID: first.id
         ) { _, descriptor in
-            descriptor
+            do {
+                _ = try await fixture.ledger.transition(
+                    operationID: draft.id,
+                    to: .aborted
+                )
+                return (descriptor, false)
+            } catch LedgerStoreError.operationReserved {
+                return (descriptor, true)
+            }
         }
-        XCTAssertEqual(recovered, first)
+        XCTAssertEqual(recovered.0, first)
+        XCTAssertTrue(recovered.1)
         try await fixture.ledger.close()
     }
 
