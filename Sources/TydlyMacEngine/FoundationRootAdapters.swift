@@ -160,7 +160,13 @@ public struct FoundationRootInspector: RootResourceInspecting {
         case let number as NSNumber:
             identifier = number.stringValue
         case .some(let value):
-            identifier = String(describing: value)
+            guard let secureValue = value as? NSSecureCoding else {
+                throw RootCapabilityError.bindingUnavailable
+            }
+            identifier = try NSKeyedArchiver.archivedData(
+                withRootObject: secureValue,
+                requiringSecureCoding: true
+            ).base64EncodedString()
         case nil:
             throw RootCapabilityError.bindingUnavailable
         }

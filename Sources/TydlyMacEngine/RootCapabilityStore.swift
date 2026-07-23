@@ -218,9 +218,15 @@ public actor RootCapabilityStore {
             throw RootCapabilityError.accessDenied
         }
 
-        let existing = try await existingRootsForValidation(
-            excluding: [logicalRootID]
-        )
+        let existing: [ExistingValidationRoot]
+        do {
+            existing = try await existingRootsForValidation(
+                excluding: [logicalRootID]
+            )
+        } catch {
+            scopeAccessor.stopAccessing(resolution.url)
+            throw error
+        }
         defer { existing.forEach { scopeAccessor.stopAccessing($0.url) } }
 
         var descriptor = root.descriptor
