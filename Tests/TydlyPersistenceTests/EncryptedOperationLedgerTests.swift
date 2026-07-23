@@ -181,6 +181,23 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         try await ledger.close()
     }
 
+    func testAuthenticatorRequiresDeterministicExecutionApproval() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let intent = try fixture.moveDraft().intent
+        let authenticator = LedgerAuthorizationAuthenticator(keyStore: fixture.keyStore)
+
+        XCTAssertThrowsError(
+            try authenticator.authorizeUserApproval(
+                batchID: intent.batchID,
+                intents: [intent],
+                executionAuthorization: .requiresConsent(.noPromotedRule)
+            )
+        ) {
+            XCTAssertEqual($0 as? LedgerStoreError, .authorizationNotGranted)
+        }
+    }
+
     func testCapabilityLossKeepsPreparedOperationResumable() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
