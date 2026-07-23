@@ -75,7 +75,7 @@ public extension Rules {
         ) == nil
     }
 
-    static func authorizeAutomaticExecution(
+    package static func authorizeAutomaticExecution(
         rule: FilingRule?,
         sensitivity: SensitivityAssessment,
         coverage: EvidenceCoverage,
