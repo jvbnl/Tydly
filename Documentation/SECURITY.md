@@ -77,11 +77,13 @@ and numeric error codes.
 `TydlyMacEngine.RootCapabilityStore` now enforces this boundary. Desktop and Downloads are
 derived internally rather than accepted from callers; Powerbox selections are validated and
 committed as one transaction. Root generations are immutable and protected by a ledger-wide
-revision CAS. Every resolution rechecks locality, provider/broad/overlap policy, and opaque
-filesystem identity. Access is available only inside balanced async closures. New plans must
-use the active exact generation; a stale refresh invalidates them. Recovery can open an older
-generation only when a recorded nonterminal operation references it. Legacy grants are never
-trusted: unreferenced ones are replaced after selection, while referenced operations enter
+revision CAS plus a crash-releasing advisory file lock spanning validation and closure use.
+Every resolution rechecks locality, provider/broad/overlap policy, and opaque filesystem
+identity. Access is available only inside balanced async closures. New plans must use the
+active exact generation; a stale refresh invalidates them. Recovery can open an older
+generation only when a recorded nonterminal operation references it, and an ephemeral
+database reservation blocks concurrent terminal transition. Legacy grants are never trusted:
+unreferenced ones are replaced after selection, while referenced operations enter
 `needsRepair`.
 
 ## Process boundaries

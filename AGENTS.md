@@ -51,7 +51,7 @@ Implemented (phase order requested by the owner: icon → popover → onboarding
 | SQLCipher operation ledger + crash recovery | `Sources/TydlyPersistence/` | implemented + disk-tested |
 | Security-scoped root generations | `Sources/TydlyMacEngine/` | implemented + policy-tested |
 | Signed sandbox + privacy audit | `Scripts/`, `.github/workflows/macos.yml` | verified on macOS 26 |
-| Core, AI, persistence, capability, and crash tests | `Tests/`, `Scripts/` | 68 passing |
+| Core, AI, persistence, capability, and crash tests | `Tests/`, `Scripts/` | 70 passing |
 
 **Not built yet** (see "Next phases"): Finder demonstration (Phase 02), whisper bar (04),
 error/repair states (05), rule offer + rules pane + weekly note + trial/rest (06), settings
@@ -153,8 +153,9 @@ Keychain plumbing. Run the signed app with
 
 `TydlyMacEngine` derives Desktop/Downloads requirements internally, stores only encrypted
 bookmarks plus opaque identity, and exposes access only inside balanced async closures.
-Capabilities are atomically versioned with a ledger-wide CAS; stale exact generations
-invalidate new plans while recorded nonterminal operations retain recovery-only access.
+Capabilities are atomically versioned with a ledger-wide CAS and crash-releasing file lock;
+stale exact generations invalidate new plans. Historical recovery requires a referencing
+nonterminal operation and reserves it against concurrent transition for the lease duration.
 
 ## The ten non-negotiable rules — DO NOT WEAKEN
 

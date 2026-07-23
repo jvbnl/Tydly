@@ -120,6 +120,8 @@ Keychain plumbing separately because it cannot impersonate Apple's restricted ac
 Desktop and Downloads are selected through separate `NSOpenPanel` Powerbox grants and
 committed atomically. Bookmarks resolve without UI, mounting, or path fallback. Local,
 non-provider, non-overlapping policy and immutable identity are rechecked on every use.
+A ledger revision CAS plus crash-releasing process lock protects validation across stores;
+historical recovery also reserves its referenced nonterminal operation.
 
 ## The ten non-negotiable rules
 
@@ -133,7 +135,7 @@ skipped decisions self-mute. The full list is in `DesignHandoff/CLAUDE.md` and t
 
 ## Note on the build environment
 
-The package is verified by an Apple-silicon macOS 26 runner: `swift build`, 68 Core/AI/
+The package is verified by an Apple-silicon macOS 26 runner: `swift build`, 70 Core/AI/
 persistence/capability tests, abrupt-process recovery probes, signed release app assembly,
 privacy audit, and a detached app-bundle launch. Powerbox behavior, menu-bar interaction,
 and pixel fidelity still need checking on a logged-in Mac with `make run`.
