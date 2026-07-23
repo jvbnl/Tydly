@@ -32,16 +32,24 @@ These are enforced in `Sources/TydlyCore/Rules.swift` and pinned by `Tests/Tydly
 
 - **Swift Package, no Xcode IDE.** Command-line workflow via the `Makefile`
   (`make run/test/app`). Chosen with the user; keeps the door open to other platforms.
-- **Two targets.** `TydlyCore` (pure Foundation — types + rules, cross-platform, tested) and
-  `Tydly` (macOS SwiftUI/AppKit UI). Keep UI-agnostic logic in `TydlyCore`; keep English copy
-  out of it (see Localization).
+- **macOS 26 on Apple silicon.** The owner approved raising the minimum so semantic
+  classification can use Apple's on-device Foundation Models framework. Swift 6.2 and the
+  macOS 26 SDK are required; no cloud fallback is allowed.
+- **Three targets.** `TydlyCore` (pure Foundation policy + path-free contracts), `TydlyAI`
+  (tool-free local model adapter), and `Tydly` (macOS SwiftUI/AppKit UI). Keep UI-agnostic
+  logic in Core and English copy in Localization.
 - **`MenuBarExtra` (`.window` style)** for icon + popover; a thin AppKit `AppDelegate` owns
   windows/panels that sit outside the scene (onboarding now; whisper `NSPanel` next).
 - **Menu-bar glyph** is a programmatically rendered *template* `NSImage` (`MenuGlyph`) so
   macOS tints it; badges are separate colored overlays.
 - **No file engine yet.** `AppModel` seeds `SampleData` and mutates in-memory. When wiring
-  real moves: `FileManager` + a journal (source/dest/timestamp/batchID) for undo, FSEvents
-  for watching, security-scoped bookmarks for folder access. Keep the sandbox network-free.
+  real moves, follow `Documentation/SECURITY.md`: encrypted prepare-before-mutation journal,
+  launch recovery, security-scoped roots, FSEvents as a rescan hint, race-safe no-overwrite
+  moves, and durable inverse undo. Keep the sandbox network-free.
+- **AI is advisory.** `TydlyAI` receives bounded path-free evidence and candidate IDs, has no
+  tools, and returns allowlisted IDs only. Deterministic `TydlyCore` policy owns sensitivity,
+  consent, autonomy, resting mode, confidence, execution, and undo. See
+  `Documentation/AI_ENGINE.md`.
 
 ## Conventions
 

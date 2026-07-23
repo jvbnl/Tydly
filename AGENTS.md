@@ -7,13 +7,13 @@ ground for humans — this doc adds *current state, what's unverified, and what 
 ## TL;DR
 
 - Swift Package (no Xcode IDE). Build/run from the CLI: `make run`, `make test`, `make app`.
-- Requires macOS 13+ and the macOS SDK (Xcode.app **or** Command Line Tools). Don't move to
-  an Xcode project — the owner deliberately wants a Swift-only, CLI-driven workflow, with an
-  eye on other platforms later.
-- Two targets: **`TydlyCore`** (pure Foundation — model + the product rules, unit-tested) and
-  **`Tydly`** (macOS SwiftUI/AppKit UI).
-- The package builds and its tests pass on macOS 14 with Apple Swift 5.10. Interactive
-  menu-bar and pixel-fidelity checks still need a logged-in Mac. See "Verify first".
+- Requires an Apple-silicon Mac on macOS 26+, Swift 6.2, and the macOS 26 SDK. The owner
+  explicitly approved the higher floor for Apple's fully local Foundation Models framework.
+  Don't move to an Xcode project; the workflow remains SwiftPM and CLI-only.
+- Three targets: **`TydlyCore`** (pure Foundation policy/contracts), **`TydlyAI`**
+  (tool-free on-device model adapter), and **`Tydly`** (macOS SwiftUI/AppKit UI).
+- The package builds and its Core/AI tests, signed bundle audit, and detached launch pass on
+  an Apple-silicon macOS 26 runner. Interactive checks still need a logged-in Mac.
 
 ## What Tydly is
 
@@ -27,6 +27,12 @@ Authoritative spec is the design handoff in `DesignHandoff/`:
 - `README.md` — screens, interactions, state machine. `DESIGN.md` — tokens, components, voice.
 - `CLAUDE.md` — the original implementation briefing.
 
+Backend/security sources of truth:
+- `Documentation/SECURITY.md` — threat model, capabilities, journal/move protocol, release gates.
+- `Documentation/AI_ENGINE.md` — evidence-first classifier, sensitivity lattice, prompt boundary.
+- Linear project: `https://linear.app/agentinc/project/tydly-d103ba5afcdb` (AgentHuddle team;
+  do not use Gymly).
+
 ## Current status
 
 Implemented (phase order requested by the owner: icon → popover → onboarding):
@@ -39,7 +45,10 @@ Implemented (phase order requested by the owner: icon → popover → onboarding
 | Popover: All tidy / Decision / Working / Observing | `Sources/Tydly/Popover/` | compiled, visual check pending |
 | Onboarding: Privacy → Folder scope → Naming | `Sources/Tydly/Onboarding/` | compiled, interaction check pending |
 | Domain model + 10 rules as logic | `Sources/TydlyCore/` | compiled |
-| Rule tests | `Tests/TydlyCoreTests/` | 13 passing |
+| AI contracts + automatic-execution policy | `Sources/TydlyCore/` | implemented + tested |
+| Local Foundation Models reranker | `Sources/TydlyAI/` | implemented + validated boundary |
+| Signed sandbox + privacy audit | `Scripts/`, `.github/workflows/macos.yml` | verified on macOS 26 |
+| Core and AI tests | `Tests/` | passing |
 
 **Not built yet** (see "Next phases"): Finder demonstration (Phase 02), whisper bar (04),
 error/repair states (05), rule offer + rules pane + weekly note + trial/rest (06), settings
@@ -49,11 +58,10 @@ in-memory so every screen renders and the approve/skip/undo loop feels live.
 
 ## Verify first
 
-`swift build`, `swift test`, `make app`, and a detached app-bundle launch pass on macOS 14
-with Apple Swift 5.10. The initial compiler shakeout fixed a `Subscription` name collision
-with Combine; packaged localization now resolves from `Contents/Resources` without relying
-on SwiftPM's build directory. Before starting the next phase, run `make run` on a logged-in
-Mac and complete these interactive checks:
+`swift build`, `swift test`, `make app`, `make audit`, and a detached app-bundle launch pass
+on an Apple-silicon macOS 26 runner. Development app bundles are ad-hoc signed with the
+production sandbox entitlements; they deliberately have no network capability. Before
+starting the next phase, run `make run` on a logged-in Mac and complete these checks:
 
 1. **`MenuBarExtra` label updates.** The icon re-renders because `TydlyApp` observes
    `AppModel` (a `@StateObject`). If the menu-bar icon doesn't update on state change on your
@@ -63,10 +71,9 @@ Mac and complete these interactive checks:
    via `-sectcreate` linker flags so `swift run` launches as a menu-bar agent (`LSUIElement`,
    no Dock icon). Confirm the item appears and there's no Dock icon. If flaky, use `make app`
    (bundles a real `.app`).
-3. **Localization via `Bundle.module`.** `L` (`Localization.swift`) uses
-   `NSLocalizedString(..., bundle: .module, ...)` reading `Resources/en.lproj/Localizable.strings`.
-   Confirm strings resolve (they fall back to the English key if not, so worst case is silent
-   identity — check the table is actually found).
+3. **Localization resource bundle.** `L` resolves `Tydly_Tydly.bundle` from the assembled
+   app's `Contents/Resources`, with `Bundle.module` only as the SwiftPM fallback. Confirm the
+   actual table loads; English fallback can otherwise hide a packaging error.
 4. **Template glyph tint + colored badges.** `MenuGlyph` is an `isTemplate` NSImage (macOS
    tints it); badges are separate colored overlays. Verify the glyph tints for light/dark
    menu bars while the blue/amber/red badges keep their color.
@@ -83,8 +90,9 @@ the Journey mock at 1× before marking the current screens visually verified.
 
 ```sh
 make run     # debug build → launches in the menu bar (Ctrl-C quits)
-make test    # TydlyCore rule tests
+make test    # Core and local-AI policy tests
 make app     # dist/Tydly.app (proper menu-bar agent bundle)
+make audit   # signing, sandbox, minimum OS, and no-network checks
 make open    # build + launch the .app
 ```
 
@@ -96,7 +104,8 @@ All tidy / Decision / Working / Observing and replay onboarding. Use that to see
 
 ```
 Sources/
-  TydlyCore/            AgentState · Domain · Rules · SampleData   (pure Foundation, no UI)
+  TydlyCore/            Domain · Rules · AIContracts · ExecutionPolicy · SampleData
+  TydlyAI/              FoundationModelClassifier (local, no tools/filesystem/network)
   Tydly/
     TydlyApp.swift              @main; MenuBarExtra scene
     AppDelegate.swift           onboarding NSWindow (whisper NSPanel goes here next)
@@ -106,13 +115,21 @@ Sources/
     MenuBar/MenuBarLabel.swift  icon glyph + badge states
     Popover/                    PopoverRootView router + the four state bodies (+ DebugStateBar)
     Onboarding/                 OnboardingView · Privacy/FolderScope/Naming steps · PageControl
-Tests/TydlyCoreTests/           RulesTests · StateTests
+Tests/
+  TydlyCoreTests/               Rules · state · execution policy
+  TydlyAITests/                 allowlist · sensitivity · prompt-boundary validation
 ```
 
 Layering rule: **UI-agnostic logic and all rule enforcement live in `TydlyCore`; user-facing
 English lives only in the UI layer** (`Localization.swift`), so `TydlyCore` stays portable and
 localization stays in one place. Compose display strings in views from Core data (counts,
 kinds, project names) — don't put English in Core.
+
+`TydlyAI` is advisory only. It receives path-free bounded evidence and existing candidate
+IDs, creates a fresh tool-free `SystemLanguageModel` session, and returns only validated
+allowlisted IDs. It cannot clear sensitivity, report execution confidence, mutate rules, or
+authorize a move. Never add cloud fallback, Private Cloud Compute, model downloads, or a
+local model server.
 
 ## The ten non-negotiable rules — DO NOT WEAKEN
 
@@ -166,11 +183,11 @@ the literal mock copy.
 3. **Error/repair states (Phase 05)** and **growing-trust (Phase 06)** popover bodies — the
    model already has the types (`ErrorKind`, `FilingRule`, `Subscription`).
 4. **Settings window (Phase 07).**
-5. **Real file engine.** `FileManager` moves recorded in a journal
-   (source/dest/timestamp/batchID) → powers undo that survives restarts (Rule 3). FSEvents for
-   watching, sweeping only when idle. Security-scoped bookmarks from `NSOpenPanel` for folder
-   access. Persist rules/journal/stats (SQLite or SwiftData) in App Support. **Keep the sandbox
-   network-free** — do not add `com.apple.security.network.client` (`Tydly.entitlements`).
+5. **Real file engine.** Follow `Documentation/SECURITY.md`, starting with encrypted durable
+   journal/recovery and security-scoped bookmarks before any mutation. FSEvents is only a
+   rescan hint. Initial moves are race-safe, no-overwrite, same-volume ordinary files; undo is
+   a durable inverse operation. **Keep the sandbox network-free** — do not add
+   `com.apple.security.network.client` (`Tydly.entitlements`).
 
 ## Guardrails
 
