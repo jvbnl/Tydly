@@ -110,13 +110,15 @@ enum LedgerCrashProbe {
             destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
             expectedSourceIdentity: sourceIdentity()
         )
-        let digest = try LedgerIntentDigest.digest(
-            batchID: intent.batchID,
-            intents: [intent]
-        )
+        let authorization = try LedgerAuthorizationAuthenticator(keyStore: ProbeKeyStore())
+            .authorizeUserApproval(
+                batchID: intent.batchID,
+                intents: [intent],
+                executionAuthorization: .approvedByUser
+            )
         return try LedgerOperationDraft(
             intent: intent,
-            authorization: .userApproval(planDigest: digest)
+            authorization: authorization
         )
     }
 

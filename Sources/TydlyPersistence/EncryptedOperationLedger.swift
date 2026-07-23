@@ -25,6 +25,8 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
     case activeResourceConflict
     case synchronizationFailed(Int32)
     case authorizationDigestMismatch
+    case authorizationNotGranted
+    case authorizationTagInvalid
     case repairRequired
 }
 
@@ -82,6 +84,7 @@ public actor EncryptedOperationLedger {
         }
         try Self.migrator.migrate(database)
         try Self.verifyIntegrity(database)
+        try Self.verifyAuthorizationIntegrity(database, keyStore: keyStore)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o600],
             ofItemAtPath: path
@@ -166,12 +169,23 @@ public actor EncryptedOperationLedger {
         guard Set(operations.map(\.kind)).count == 1 else {
             throw LedgerStoreError.invalidBatchComposition
         }
+        let intents = operations.map(\.intent)
         let intentDigest = try LedgerIntentDigest.digest(
             batchID: id,
-            intents: operations.map(\.intent)
+            intents: intents
         )
         guard operations.allSatisfy({ $0.authorization.intentDigest == intentDigest }) else {
             throw LedgerStoreError.authorizationDigestMismatch
+        }
+        let authenticator = LedgerAuthorizationAuthenticator(keyStore: keyStore)
+        for operation in operations {
+            guard try authenticator.verify(
+                operation.authorization,
+                batchID: id,
+                intents: intents
+            ) else {
+                throw LedgerStoreError.authorizationTagInvalid
+            }
         }
 
         return try database.write { db in
@@ -498,6 +512,7 @@ public actor EncryptedOperationLedger {
 
     public func integrityCheck() throws {
         try Self.verifyIntegrity(database)
+        try Self.verifyAuthorizationIntegrity(database, keyStore: keyStore)
     }
 
     public func schemaVersion() throws -> Int {
@@ -534,6 +549,7 @@ public actor EncryptedOperationLedger {
             let backupDatabase = try Self.openDatabase(path: temporary.path, key: key)
             defer { try? backupDatabase.close() }
             try Self.verifyIntegrity(backupDatabase)
+            try Self.verifyAuthorizationIntegrity(backupDatabase, keyStore: keyStore)
 
             try backupDatabase.close()
             try Self.synchronizeFile(at: temporary)
@@ -1029,6 +1045,33 @@ public actor EncryptedOperationLedger {
                 )
                 guard lastEventPhase == operation.phase.rawValue else {
                     throw LedgerStoreError.integrityCheckFailed
+                }
+            }
+        }
+    }
+
+    private static func verifyAuthorizationIntegrity(
+        _ database: DatabaseQueue,
+        keyStore: any DatabaseKeyStore
+    ) throws {
+        let batches = try database.read { db -> [[LedgerOperation]] in
+            let operations = try Row.fetchAll(db, sql: "SELECT * FROM operations")
+                .map(Self.decodeOperation)
+            return Dictionary(grouping: operations, by: \.draft.batchID)
+                .values
+                .map { Array($0) }
+        }
+        let authenticator = LedgerAuthorizationAuthenticator(keyStore: keyStore)
+        for batch in batches {
+            guard let batchID = batch.first?.draft.batchID else { continue }
+            let intents = batch.map(\.draft.intent)
+            for operation in batch {
+                guard try authenticator.verify(
+                    operation.draft.authorization,
+                    batchID: batchID,
+                    intents: intents
+                ) else {
+                    throw LedgerStoreError.authorizationTagInvalid
                 }
             }
         }

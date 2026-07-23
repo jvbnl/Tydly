@@ -130,13 +130,15 @@ final class EncryptedOperationLedgerTests: XCTestCase {
                 fingerprint: "other-fingerprint"
             )
         )
-        let nextDigest = try LedgerIntentDigest.digest(
-            batchID: nextIntent.batchID,
-            intents: [nextIntent]
-        )
+        let nextAuthorization = try LedgerAuthorizationAuthenticator(keyStore: fixture.keyStore)
+            .authorizeUserApproval(
+                batchID: nextIntent.batchID,
+                intents: [nextIntent],
+                executionAuthorization: .approvedByUser
+            )
         let nextDraft = try LedgerOperationDraft(
             intent: nextIntent,
-            authorization: .userApproval(planDigest: nextDigest)
+            authorization: nextAuthorization
         )
         do {
             _ = try await ledger.prepareBatch(
@@ -159,7 +161,10 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         let valid = try fixture.moveDraft()
         let forged = try LedgerOperationDraft(
             intent: valid.intent,
-            authorization: .userApproval(planDigest: "not-the-intent-digest")
+            authorization: .userApproval(
+                planDigest: valid.authorization.intentDigest,
+                authenticationTag: Data(repeating: 0, count: 32)
+            )
         )
 
         do {
@@ -169,7 +174,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             )
             XCTFail("authorization must be bound to the exact canonical batch")
         } catch {
-            XCTAssertEqual(error as? LedgerStoreError, .authorizationDigestMismatch)
+            XCTAssertEqual(error as? LedgerStoreError, .authorizationTagInvalid)
         }
         let batch = try await ledger.batch(id: forged.batchID)
         XCTAssertNil(batch)
@@ -271,13 +276,16 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             destinationPath: try ScopedRelativePath(rawValue: "other.png"),
             expectedSourceIdentity: try fixture.destinationIdentity()
         )
-        let conflictingDigest = try LedgerIntentDigest.digest(
+        let conflictingAuthorization = try LedgerAuthorizationAuthenticator(
+            keyStore: fixture.keyStore
+        ).authorizeUserApproval(
             batchID: conflictingIntent.batchID,
-            intents: [conflictingIntent]
+            intents: [conflictingIntent],
+            executionAuthorization: .approvedByUser
         )
         let conflicting = try LedgerOperationDraft(
             intent: conflictingIntent,
-            authorization: .userApproval(planDigest: conflictingDigest)
+            authorization: conflictingAuthorization
         )
 
         do {
@@ -336,13 +344,15 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             expectedSourceIdentity: destinationIdentity,
             reversesOperationID: move.id
         )
-        let undoDigest = try LedgerIntentDigest.digest(
-            batchID: undoIntent.batchID,
-            intents: [undoIntent]
-        )
+        let undoAuthorization = try LedgerAuthorizationAuthenticator(keyStore: fixture.keyStore)
+            .authorizeUserApproval(
+                batchID: undoIntent.batchID,
+                intents: [undoIntent],
+                executionAuthorization: .approvedByUser
+            )
         let undo = try LedgerOperationDraft(
             intent: undoIntent,
-            authorization: .userApproval(planDigest: undoDigest)
+            authorization: undoAuthorization
         )
         _ = try await ledger.prepareBatch(id: undo.batchID, operations: [undo])
         _ = try await ledger.transition(
@@ -378,13 +388,16 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             expectedSourceIdentity: move.expectedSourceIdentity,
             reversesOperationID: move.id
         )
-        let invalidUndoDigest = try LedgerIntentDigest.digest(
+        let invalidUndoAuthorization = try LedgerAuthorizationAuthenticator(
+            keyStore: fixture.keyStore
+        ).authorizeUserApproval(
             batchID: invalidUndoIntent.batchID,
-            intents: [invalidUndoIntent]
+            intents: [invalidUndoIntent],
+            executionAuthorization: .approvedByUser
         )
         let invalidUndo = try LedgerOperationDraft(
             intent: invalidUndoIntent,
-            authorization: .userApproval(planDigest: invalidUndoDigest)
+            authorization: invalidUndoAuthorization
         )
 
         do {
@@ -463,13 +476,15 @@ private struct Fixture {
             destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
             expectedSourceIdentity: sourceIdentity()
         )
-        let digest = try LedgerIntentDigest.digest(
-            batchID: intent.batchID,
-            intents: [intent]
-        )
+        let authorization = try LedgerAuthorizationAuthenticator(keyStore: keyStore)
+            .authorizeUserApproval(
+                batchID: intent.batchID,
+                intents: [intent],
+                executionAuthorization: .approvedByUser
+            )
         return try LedgerOperationDraft(
             intent: intent,
-            authorization: .userApproval(planDigest: digest)
+            authorization: authorization
         )
     }
 

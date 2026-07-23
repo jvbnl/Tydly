@@ -97,24 +97,40 @@ public enum LedgerOperationKind: String, Codable, Equatable, Sendable {
 /// Provenance that authorizes a prepared operation. A model response is intentionally not
 /// representable here.
 public enum LedgerAuthorization: Codable, Equatable, Sendable {
-    case userApproval(planDigest: String)
-    case promotedRule(ruleID: String, revision: Int, intentDigest: String)
+    case userApproval(planDigest: String, authenticationTag: Data)
+    case promotedRule(
+        ruleID: String,
+        revision: Int,
+        intentDigest: String,
+        authenticationTag: Data
+    )
 
     public var intentDigest: String {
         switch self {
-        case .userApproval(let planDigest):
+        case .userApproval(let planDigest, _):
             return planDigest
-        case .promotedRule(_, _, let intentDigest):
+        case .promotedRule(_, _, let intentDigest, _):
             return intentDigest
+        }
+    }
+
+    public var authenticationTag: Data {
+        switch self {
+        case .userApproval(_, let authenticationTag),
+             .promotedRule(_, _, _, let authenticationTag):
+            return authenticationTag
         }
     }
 
     var isValid: Bool {
         switch self {
-        case .userApproval(let planDigest):
-            return !planDigest.isEmpty
-        case .promotedRule(let ruleID, let revision, let intentDigest):
-            return !ruleID.isEmpty && revision >= 0 && !intentDigest.isEmpty
+        case .userApproval(let planDigest, let tag):
+            return !planDigest.isEmpty && tag.count == 32
+        case .promotedRule(let ruleID, let revision, let intentDigest, let tag):
+            return !ruleID.isEmpty
+                && revision >= 0
+                && !intentDigest.isEmpty
+                && tag.count == 32
         }
     }
 }
@@ -273,6 +289,19 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
                 reversesOperationID: reversesOperationID
             ),
             authorization: authorization
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case intent
+        case authorization
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            intent: values.decode(LedgerOperationIntent.self, forKey: .intent),
+            authorization: values.decode(LedgerAuthorization.self, forKey: .authorization)
         )
     }
 }

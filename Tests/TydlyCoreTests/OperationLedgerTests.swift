@@ -181,7 +181,10 @@ final class OperationLedgerTests: XCTestCase {
                 destinationRootID: "atlas",
                 destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
                 expectedSourceIdentity: identity,
-                authorization: .userApproval(planDigest: "plan")
+                authorization: .userApproval(
+                    planDigest: "plan",
+                    authenticationTag: Data(repeating: 0, count: 32)
+                )
             )
         ) {
             XCTAssertEqual($0 as? LedgerValidationError, .negativeOrdinal)
@@ -211,7 +214,10 @@ final class OperationLedgerTests: XCTestCase {
                 destinationPath: destination,
                 expectedSourceIdentity: identity,
                 reversesOperationID: "other",
-                authorization: .userApproval(planDigest: "plan")
+                authorization: .userApproval(
+                    planDigest: "plan",
+                    authenticationTag: Data(repeating: 0, count: 32)
+                )
             )
         ) {
             XCTAssertEqual($0 as? LedgerValidationError, .invalidInverseReference)
@@ -228,7 +234,10 @@ final class OperationLedgerTests: XCTestCase {
                 destinationRootID: "desktop",
                 destinationPath: source,
                 expectedSourceIdentity: identity,
-                authorization: .userApproval(planDigest: "plan")
+                authorization: .userApproval(
+                    planDigest: "plan",
+                    authenticationTag: Data(repeating: 0, count: 32)
+                )
             )
         ) {
             XCTAssertEqual($0 as? LedgerValidationError, .identicalSourceAndDestination)
@@ -245,7 +254,10 @@ final class OperationLedgerTests: XCTestCase {
                 destinationRootID: "atlas",
                 destinationPath: destination,
                 expectedSourceIdentity: identity,
-                authorization: .userApproval(planDigest: "")
+                authorization: .userApproval(
+                    planDigest: "",
+                    authenticationTag: Data()
+                )
             )
         ) {
             XCTAssertEqual($0 as? LedgerValidationError, .invalidAuthorization)
