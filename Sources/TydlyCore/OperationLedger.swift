@@ -5,6 +5,9 @@ public enum LedgerValidationError: Error, Equatable, Sendable {
     case invalidRelativePath
     case negativeOrdinal
     case negativeByteCount
+    case invalidInverseReference
+    case identicalSourceAndDestination
+    case invalidAuthorization
 }
 
 /// A path relative to one explicit security-scoped root. Absolute paths, empty components,
@@ -91,6 +94,22 @@ public enum LedgerOperationKind: String, Codable, Equatable, Sendable {
     case undo
 }
 
+/// Provenance that authorizes a prepared operation. A model response is intentionally not
+/// representable here.
+public enum LedgerAuthorization: Codable, Equatable, Sendable {
+    case userApproval(planDigest: String)
+    case promotedRule(ruleID: String, revision: Int)
+
+    var isValid: Bool {
+        switch self {
+        case .userApproval(let planDigest):
+            return !planDigest.isEmpty
+        case .promotedRule(let ruleID, let revision):
+            return !ruleID.isEmpty && revision >= 0
+        }
+    }
+}
+
 public enum LedgerOperationPhase: String, Codable, CaseIterable, Equatable, Sendable {
     case prepared
     case applied
@@ -121,6 +140,7 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
     public let destinationPath: ScopedRelativePath
     public let expectedSourceIdentity: LedgerFileIdentity
     public let reversesOperationID: String?
+    public let authorization: LedgerAuthorization
 
     public init(
         id: String,
@@ -132,13 +152,26 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
         destinationRootID: String,
         destinationPath: ScopedRelativePath,
         expectedSourceIdentity: LedgerFileIdentity,
-        reversesOperationID: String? = nil
+        reversesOperationID: String? = nil,
+        authorization: LedgerAuthorization
     ) throws {
         guard !id.isEmpty, !batchID.isEmpty, !sourceRootID.isEmpty, !destinationRootID.isEmpty else {
             throw LedgerValidationError.emptyIdentifier
         }
         guard ordinal >= 0 else {
             throw LedgerValidationError.negativeOrdinal
+        }
+        switch (kind, reversesOperationID) {
+        case (.move, nil), (.undo, .some):
+            break
+        case (.move, .some), (.undo, nil):
+            throw LedgerValidationError.invalidInverseReference
+        }
+        guard sourceRootID != destinationRootID || sourcePath != destinationPath else {
+            throw LedgerValidationError.identicalSourceAndDestination
+        }
+        guard authorization.isValid else {
+            throw LedgerValidationError.invalidAuthorization
         }
         self.id = id
         self.batchID = batchID
@@ -150,6 +183,7 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
         self.destinationPath = destinationPath
         self.expectedSourceIdentity = expectedSourceIdentity
         self.reversesOperationID = reversesOperationID
+        self.authorization = authorization
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -163,6 +197,7 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
         case destinationPath
         case expectedSourceIdentity
         case reversesOperationID
+        case authorization
     }
 
     public init(from decoder: Decoder) throws {
@@ -180,7 +215,8 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
                 LedgerFileIdentity.self,
                 forKey: .expectedSourceIdentity
             ),
-            reversesOperationID: values.decodeIfPresent(String.self, forKey: .reversesOperationID)
+            reversesOperationID: values.decodeIfPresent(String.self, forKey: .reversesOperationID),
+            authorization: values.decode(LedgerAuthorization.self, forKey: .authorization)
         )
     }
 }
@@ -189,6 +225,7 @@ public struct LedgerOperation: Identifiable, Codable, Equatable, Sendable {
     public let draft: LedgerOperationDraft
     public let phase: LedgerOperationPhase
     public let observedDestinationIdentity: LedgerFileIdentity?
+    public let repairReason: LedgerRepairReason?
     public let createdAt: Date
     public let updatedAt: Date
 
@@ -198,12 +235,14 @@ public struct LedgerOperation: Identifiable, Codable, Equatable, Sendable {
         draft: LedgerOperationDraft,
         phase: LedgerOperationPhase,
         observedDestinationIdentity: LedgerFileIdentity?,
+        repairReason: LedgerRepairReason? = nil,
         createdAt: Date,
         updatedAt: Date
     ) {
         self.draft = draft
         self.phase = phase
         self.observedDestinationIdentity = observedDestinationIdentity
+        self.repairReason = repairReason
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -212,6 +251,7 @@ public struct LedgerOperation: Identifiable, Codable, Equatable, Sendable {
 public enum LedgerBatchStatus: String, Codable, Equatable, Sendable {
     case active
     case committed
+    case aborted
     case partiallyUndone
     case undone
     case needsRepair
@@ -265,7 +305,7 @@ public enum FileSystemObservation: Equatable, Sendable {
     case capabilityUnavailable
 }
 
-public enum LedgerRepairReason: Equatable, Sendable {
+public enum LedgerRepairReason: String, Codable, Equatable, Sendable {
     case ambiguousPresence
     case missingCommittedItem
     case destinationConflict

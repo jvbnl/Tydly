@@ -3,6 +3,8 @@ import Foundation
 public enum LedgerFileQuarantineError: Error, Equatable, Sendable {
     case databaseNotFound
     case invalidIdentifier
+    case requiresSiblingDirectories
+    case destinationExists
 }
 
 /// Moves a closed database and any known sidecars into a private quarantine directory.
@@ -24,25 +26,36 @@ public enum LedgerFileQuarantine {
             throw LedgerFileQuarantineError.databaseNotFound
         }
 
-        let destination = quarantineRoot.appendingPathComponent(identifier, isDirectory: true)
-        try fileManager.createDirectory(
-            at: destination,
-            withIntermediateDirectories: false,
-            attributes: [.posixPermissions: 0o700]
-        )
-
-        let candidates = [
-            databaseURL,
-            URL(fileURLWithPath: databaseURL.path + "-journal"),
-            URL(fileURLWithPath: databaseURL.path + "-wal"),
-            URL(fileURLWithPath: databaseURL.path + "-shm")
-        ]
-        for source in candidates where fileManager.fileExists(atPath: source.path) {
-            try fileManager.moveItem(
-                at: source,
-                to: destination.appendingPathComponent(source.lastPathComponent)
-            )
+        let databaseDirectory = databaseURL.deletingLastPathComponent().standardizedFileURL
+        let normalizedQuarantineRoot = quarantineRoot.standardizedFileURL
+        guard databaseDirectory.deletingLastPathComponent()
+                == normalizedQuarantineRoot.deletingLastPathComponent(),
+              databaseDirectory != normalizedQuarantineRoot else {
+            throw LedgerFileQuarantineError.requiresSiblingDirectories
         }
+
+        let databaseDirectoryValues = try databaseDirectory.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        let quarantineValues = try normalizedQuarantineRoot.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        guard databaseDirectoryValues.isDirectory == true,
+              databaseDirectoryValues.isSymbolicLink != true,
+              quarantineValues.isDirectory == true,
+              quarantineValues.isSymbolicLink != true else {
+            throw LedgerFileQuarantineError.requiresSiblingDirectories
+        }
+
+        let destination = normalizedQuarantineRoot
+            .appendingPathComponent(identifier, isDirectory: true)
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            throw LedgerFileQuarantineError.destinationExists
+        }
+
+        // Sibling-directory rename keeps the complete database generation together: main
+        // file, rollback journal, any unexpected sidecars, and recovery metadata.
+        try fileManager.moveItem(at: databaseDirectory, to: destination)
         return destination
     }
 }

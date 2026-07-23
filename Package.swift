@@ -48,7 +48,8 @@ let package = Package(
             name: "TydlyPersistence",
             dependencies: [
                 "TydlyCore",
-                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "SQLCipher", package: "SQLCipher.swift")
             ],
             linkerSettings: [
                 .linkedFramework("Security")

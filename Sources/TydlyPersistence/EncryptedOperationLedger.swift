@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import GRDB
 import TydlyCore
 
@@ -16,6 +17,13 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
     case integrityCheckFailed
     case backupDestinationExists
     case backupVerificationFailed
+    case insecureStorageDirectory
+    case rootMutationRejected
+    case destinationIdentityIsImmutable
+    case invalidBatchComposition
+    case missingRepairReason
+    case activeResourceConflict
+    case synchronizationFailed(Int32)
 }
 
 public struct LedgerRootRecord: Identifiable, Equatable, Sendable {
@@ -53,21 +61,30 @@ public actor EncryptedOperationLedger {
         self.keyStore = keyStore
 
         let databaseURL = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
+        let databaseExisted = FileManager.default.fileExists(atPath: path)
+        try Self.preparePrivateDirectory(databaseURL.deletingLastPathComponent())
 
-        var key = try keyStore.loadOrCreateKey()
+        var key: Data
+        if databaseExisted {
+            guard let existingKey = try keyStore.loadExistingKey() else {
+                throw LedgerStoreError.encryptionKeyUnavailable
+            }
+            key = existingKey
+        } else {
+            key = try keyStore.loadOrCreateKey()
+        }
         defer { key.resetBytes(in: 0..<key.count) }
         database = try Self.openDatabase(path: path, key: key)
+        if databaseExisted {
+            try Self.verifyPhysicalIntegrity(database)
+        }
         try Self.migrator.migrate(database)
         try Self.verifyIntegrity(database)
-        try? FileManager.default.setAttributes(
+        try FileManager.default.setAttributes(
             [.posixPermissions: 0o600],
             ofItemAtPath: path
         )
+        try Self.verifyPrivatePermissions(at: databaseURL, allowedMask: 0o600)
     }
 
     public func close() throws {
@@ -84,15 +101,23 @@ public actor EncryptedOperationLedger {
             throw LedgerValidationError.emptyIdentifier
         }
         try database.write { db in
+            if let existing = try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM roots WHERE id = ?",
+                arguments: [id]
+            ) {
+                let record = Self.decodeRoot(existing)
+                guard record.bookmark == bookmark,
+                      record.bookmarkVersion == bookmarkVersion else {
+                    throw LedgerStoreError.rootMutationRejected
+                }
+                return
+            }
             try db.execute(
                 sql: """
                     INSERT INTO roots (
                         id, bookmark, bookmarkVersion, createdAt, updatedAt
                     ) VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        bookmark = excluded.bookmark,
-                        bookmarkVersion = excluded.bookmarkVersion,
-                        updatedAt = excluded.updatedAt
                     """,
                 arguments: [
                     id,
@@ -136,6 +161,9 @@ public actor EncryptedOperationLedger {
               Set(operations.map(\.ordinal)).count == operations.count else {
             throw LedgerStoreError.duplicateOperationOrOrdinal
         }
+        guard Set(operations.map(\.kind)).count == 1 else {
+            throw LedgerStoreError.invalidBatchComposition
+        }
 
         return try database.write { db in
             for operation in operations where operation.kind == .undo {
@@ -152,7 +180,9 @@ public actor EncryptedOperationLedger {
             )
 
             for operation in operations.sorted(by: { $0.ordinal < $1.ordinal }) {
+                try Self.validateNoActiveResourceConflict(operation, in: db)
                 let expectedIdentity = try Self.encodeIdentity(operation.expectedSourceIdentity)
+                let authorization = try Self.encodeAuthorization(operation.authorization)
                 try db.execute(
                     sql: """
                         INSERT INTO operations (
@@ -160,8 +190,9 @@ public actor EncryptedOperationLedger {
                             sourceRootID, sourceRelativePath,
                             destinationRootID, destinationRelativePath,
                             expectedSourceIdentity, observedDestinationIdentity,
-                            reversesOperationID, phase, createdAt, updatedAt
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+                            reversesOperationID, authorization, phase, repairReason,
+                            createdAt, updatedAt
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?, ?)
                         """,
                     arguments: [
                         operation.id,
@@ -174,6 +205,7 @@ public actor EncryptedOperationLedger {
                         operation.destinationPath.rawValue,
                         expectedIdentity,
                         operation.reversesOperationID,
+                        authorization,
                         LedgerOperationPhase.prepared.rawValue,
                         timestamp,
                         timestamp
@@ -203,6 +235,7 @@ public actor EncryptedOperationLedger {
         operationID: String,
         to nextPhase: LedgerOperationPhase,
         observedDestinationIdentity: LedgerFileIdentity? = nil,
+        repairReason: LedgerRepairReason? = nil,
         errorDomain: String? = nil,
         errorCode: Int? = nil,
         at date: Date = Date()
@@ -222,24 +255,46 @@ public actor EncryptedOperationLedger {
 
             let resultingIdentity: LedgerFileIdentity?
             if nextPhase == .applied {
-                guard let observedDestinationIdentity else {
+                guard current.observedDestinationIdentity == nil,
+                      let observedDestinationIdentity else {
                     throw LedgerStoreError.missingDestinationIdentity
                 }
                 resultingIdentity = observedDestinationIdentity
             } else {
-                resultingIdentity = observedDestinationIdentity ?? current.observedDestinationIdentity
+                guard observedDestinationIdentity == nil else {
+                    throw LedgerStoreError.destinationIdentityIsImmutable
+                }
+                resultingIdentity = current.observedDestinationIdentity
+            }
+            if nextPhase == .committed, current.draft.kind == .undo {
+                guard let reversedID = current.draft.reversesOperationID,
+                      let original = try Self.fetchOperation(id: reversedID, from: db),
+                      resultingIdentity == original.draft.expectedSourceIdentity else {
+                    throw LedgerStoreError.invalidInverseOperation
+                }
+            }
+
+            let resultingRepairReason: LedgerRepairReason?
+            if nextPhase == .needsRepair {
+                guard let repairReason else {
+                    throw LedgerStoreError.missingRepairReason
+                }
+                resultingRepairReason = repairReason
+            } else {
+                resultingRepairReason = nil
             }
 
             let encodedIdentity = try resultingIdentity.map(Self.encodeIdentity)
             try db.execute(
                 sql: """
                     UPDATE operations
-                    SET phase = ?, observedDestinationIdentity = ?, updatedAt = ?
+                    SET phase = ?, observedDestinationIdentity = ?, repairReason = ?, updatedAt = ?
                     WHERE id = ? AND phase = ?
                     """,
                 arguments: [
                     nextPhase.rawValue,
                     encodedIdentity,
+                    resultingRepairReason?.rawValue,
                     date.timeIntervalSince1970,
                     operationID,
                     current.phase.rawValue
@@ -258,7 +313,7 @@ public actor EncryptedOperationLedger {
                 errorCode: errorCode
             )
             try Self.refreshBatchStatus(current.draft.batchID, in: db, at: date)
-            if nextPhase == .committed, current.draft.kind == .undo {
+            if current.draft.kind == .undo {
                 try Self.refreshOriginalBatchStatus(for: current.draft, in: db, at: date)
             }
 
@@ -281,6 +336,12 @@ public actor EncryptedOperationLedger {
         guard let current = try operation(id: operationID) else {
             throw LedgerStoreError.operationNotFound
         }
+        if current.phase == .committed,
+           current.draft.kind == .move,
+           observation == .matchingSourceOnly,
+           try hasCommittedInverse(for: operationID) {
+            return .none
+        }
         let action = LedgerRecovery.action(phase: current.phase, observation: observation)
 
         switch action {
@@ -295,14 +356,43 @@ public actor EncryptedOperationLedger {
             _ = try transition(operationID: operationID, to: .committed, at: date)
         case .markAborted:
             _ = try transition(operationID: operationID, to: .aborted, at: date)
-        case .holdForRepair:
-            if current.phase != .needsRepair {
-                _ = try transition(operationID: operationID, to: .needsRepair, at: date)
+        case .holdForRepair(let reason):
+            if reason == .capabilityUnavailable {
+                try database.write { db in
+                    try Self.insertEvent(
+                        db,
+                        operationID: operationID,
+                        phase: current.phase,
+                        date: date,
+                        errorDomain: reason.rawValue,
+                        errorCode: nil
+                    )
+                }
+            } else if current.phase != .needsRepair {
+                _ = try transition(
+                    operationID: operationID,
+                    to: .needsRepair,
+                    repairReason: reason,
+                    at: date
+                )
             }
         case .retryMutation, .none:
             break
         }
         return action
+    }
+
+    private func hasCommittedInverse(for operationID: String) throws -> Bool {
+        try database.read { db in
+            (try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM operations
+                    WHERE reversesOperationID = ? AND kind = 'undo' AND phase = 'committed'
+                    """,
+                arguments: [operationID]
+            ) ?? 0) > 0
+        }
     }
 
     public func operation(id: String) throws -> LedgerOperation? {
@@ -392,26 +482,35 @@ public actor EncryptedOperationLedger {
         guard !FileManager.default.fileExists(atPath: destination.path) else {
             throw LedgerStoreError.backupDestinationExists
         }
+        let temporary = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).partial-\(UUID().uuidString)")
 
         do {
             try database.writeWithoutTransaction { db in
                 try db.execute(sql: "PRAGMA cipher_default_page_size = 4096")
-                try db.execute(sql: "VACUUM INTO ?", arguments: [destination.path])
+                try db.execute(sql: "VACUUM INTO ?", arguments: [temporary.path])
             }
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600],
-                ofItemAtPath: destination.path
+                ofItemAtPath: temporary.path
             )
+            try Self.verifyPrivatePermissions(at: temporary, allowedMask: 0o600)
 
             guard var key = try keyStore.loadExistingKey() else {
                 throw LedgerStoreError.encryptionKeyUnavailable
             }
             defer { key.resetBytes(in: 0..<key.count) }
-            let backupDatabase = try Self.openDatabase(path: destination.path, key: key)
+            let backupDatabase = try Self.openDatabase(path: temporary.path, key: key)
             defer { try? backupDatabase.close() }
             try Self.verifyIntegrity(backupDatabase)
+
+            try backupDatabase.close()
+            try Self.synchronizeFile(at: temporary)
+            try FileManager.default.moveItem(at: temporary, to: destination)
+            try Self.synchronizeDirectory(at: destination.deletingLastPathComponent())
         } catch {
-            try? FileManager.default.removeItem(at: destination)
+            try? FileManager.default.removeItem(at: temporary)
             throw error
         }
     }
@@ -420,7 +519,6 @@ public actor EncryptedOperationLedger {
         let ephemeralKey = EphemeralKey(key)
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
-        configuration.defaultTransactionKind = .immediate
         configuration.foreignKeysEnabled = true
         configuration.prepareDatabase { db in
             try ephemeralKey.consume { key in
@@ -457,7 +555,10 @@ public actor EncryptedOperationLedger {
                 CREATE TABLE batches (
                     id TEXT PRIMARY KEY NOT NULL,
                     status TEXT NOT NULL CHECK (
-                        status IN ('active', 'committed', 'partiallyUndone', 'undone', 'needsRepair')
+                        status IN (
+                            'active', 'committed', 'aborted',
+                            'partiallyUndone', 'undone', 'needsRepair'
+                        )
                     ),
                     createdAt DOUBLE NOT NULL,
                     updatedAt DOUBLE NOT NULL
@@ -479,13 +580,27 @@ public actor EncryptedOperationLedger {
                     ),
                     expectedSourceIdentity BLOB NOT NULL,
                     observedDestinationIdentity BLOB,
-                    reversesOperationID TEXT UNIQUE
+                    reversesOperationID TEXT
                         REFERENCES operations(id) ON DELETE RESTRICT,
+                    authorization BLOB NOT NULL,
                     phase TEXT NOT NULL CHECK (
                         phase IN ('prepared', 'applied', 'committed', 'aborted', 'needsRepair')
                     ),
+                    repairReason TEXT CHECK (
+                        repairReason IS NULL OR repairReason IN (
+                            'ambiguousPresence',
+                            'missingCommittedItem',
+                            'destinationConflict',
+                            'capabilityUnavailable',
+                            'terminalStateMismatch'
+                        )
+                    ),
                     createdAt DOUBLE NOT NULL,
                     updatedAt DOUBLE NOT NULL,
+                    CHECK (
+                        (kind = 'move' AND reversesOperationID IS NULL)
+                        OR (kind = 'undo' AND reversesOperationID IS NOT NULL)
+                    ),
                     UNIQUE(batchID, ordinal)
                 );
 
@@ -504,6 +619,15 @@ public actor EncryptedOperationLedger {
                     ON operations(phase, createdAt, batchID, ordinal);
                 CREATE INDEX operationEventsByOperation
                     ON operationEvents(operationID, sequence);
+                CREATE UNIQUE INDEX oneLiveUndoPerOperation
+                    ON operations(reversesOperationID)
+                    WHERE reversesOperationID IS NOT NULL AND phase != 'aborted';
+                CREATE UNIQUE INDEX oneActiveSource
+                    ON operations(sourceRootID, sourceRelativePath)
+                    WHERE phase IN ('prepared', 'applied');
+                CREATE UNIQUE INDEX oneActiveDestination
+                    ON operations(destinationRootID, destinationRelativePath)
+                    WHERE phase IN ('prepared', 'applied');
 
                 PRAGMA user_version = 1;
                 """)
@@ -529,33 +653,115 @@ public actor EncryptedOperationLedger {
         }
     }
 
+    private static func validateNoActiveResourceConflict(
+        _ operation: LedgerOperationDraft,
+        in db: Database
+    ) throws {
+        let conflictCount = try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(*) FROM operations
+                WHERE phase IN ('prepared', 'applied')
+                  AND (
+                      (sourceRootID = ? AND sourceRelativePath = ?)
+                      OR (destinationRootID = ? AND destinationRelativePath = ?)
+                      OR (sourceRootID = ? AND sourceRelativePath = ?)
+                      OR (destinationRootID = ? AND destinationRelativePath = ?)
+                  )
+                """,
+            arguments: [
+                operation.sourceRootID,
+                operation.sourcePath.rawValue,
+                operation.sourceRootID,
+                operation.sourcePath.rawValue,
+                operation.destinationRootID,
+                operation.destinationPath.rawValue,
+                operation.destinationRootID,
+                operation.destinationPath.rawValue
+            ]
+        ) ?? 0
+        guard conflictCount == 0 else {
+            throw LedgerStoreError.activeResourceConflict
+        }
+    }
+
     private static func refreshBatchStatus(
         _ batchID: String,
         in db: Database,
         at date: Date
     ) throws {
-        let repairCount = try Int.fetchOne(
+        guard let kindRaw = try String.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM operations WHERE batchID = ? AND phase = ?",
-            arguments: [batchID, LedgerOperationPhase.needsRepair.rawValue]
+            sql: "SELECT kind FROM operations WHERE batchID = ? LIMIT 1",
+            arguments: [batchID]
+        ), let kind = LedgerOperationKind(rawValue: kindRaw) else {
+            throw LedgerStoreError.integrityCheckFailed
+        }
+
+        let ownRepairCount = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM operations WHERE batchID = ? AND phase = 'needsRepair'",
+            arguments: [batchID]
+        ) ?? 0
+        let inverseRepairCount = try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(*)
+                FROM operations AS inverse
+                JOIN operations AS original
+                  ON inverse.reversesOperationID = original.id
+                WHERE original.batchID = ? AND inverse.phase = 'needsRepair'
+                """,
+            arguments: [batchID]
         ) ?? 0
         let activeCount = try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM operations WHERE batchID = ? AND phase IN (?, ?)",
-            arguments: [
-                batchID,
-                LedgerOperationPhase.prepared.rawValue,
-                LedgerOperationPhase.applied.rawValue
-            ]
+            sql: """
+                SELECT COUNT(*) FROM operations
+                WHERE batchID = ? AND phase IN ('prepared', 'applied')
+                """,
+            arguments: [batchID]
+        ) ?? 0
+        let committedCount = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM operations WHERE batchID = ? AND phase = 'committed'",
+            arguments: [batchID]
         ) ?? 0
 
         let status: LedgerBatchStatus
-        if repairCount > 0 {
+        if ownRepairCount > 0 || inverseRepairCount > 0 {
             status = .needsRepair
         } else if activeCount > 0 {
             status = .active
-        } else {
+        } else if committedCount == 0 {
+            status = .aborted
+        } else if kind == .undo {
             status = .committed
+        } else {
+            let reversedCount = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*)
+                    FROM operations AS original
+                    WHERE original.batchID = ?
+                      AND original.kind = 'move'
+                      AND original.phase = 'committed'
+                      AND EXISTS (
+                          SELECT 1 FROM operations AS inverse
+                          WHERE inverse.reversesOperationID = original.id
+                            AND inverse.kind = 'undo'
+                            AND inverse.phase = 'committed'
+                      )
+                    """,
+                arguments: [batchID]
+            ) ?? 0
+            if reversedCount == committedCount {
+                status = .undone
+            } else if reversedCount > 0 {
+                status = .partiallyUndone
+            } else {
+                status = .committed
+            }
         }
 
         try db.execute(
@@ -577,41 +783,7 @@ public actor EncryptedOperationLedger {
               ) else {
             throw LedgerStoreError.invalidInverseOperation
         }
-
-        let moveCount = try Int.fetchOne(
-            db,
-            sql: "SELECT COUNT(*) FROM operations WHERE batchID = ? AND kind = 'move'",
-            arguments: [originalBatchID]
-        ) ?? 0
-        let undoneCount = try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COUNT(*)
-                FROM operations AS original
-                WHERE original.batchID = ?
-                  AND original.kind = 'move'
-                  AND EXISTS (
-                      SELECT 1 FROM operations AS inverse
-                      WHERE inverse.reversesOperationID = original.id
-                        AND inverse.kind = 'undo'
-                        AND inverse.phase = 'committed'
-                  )
-                """,
-            arguments: [originalBatchID]
-        ) ?? 0
-
-        let status: LedgerBatchStatus
-        if moveCount > 0, undoneCount == moveCount {
-            status = .undone
-        } else if undoneCount > 0 {
-            status = .partiallyUndone
-        } else {
-            status = .committed
-        }
-        try db.execute(
-            sql: "UPDATE batches SET status = ?, updatedAt = ? WHERE id = ?",
-            arguments: [status.rawValue, date.timeIntervalSince1970, originalBatchID]
-        )
+        try refreshBatchStatus(originalBatchID, in: db, at: date)
     }
 
     private static func insertEvent(
@@ -657,6 +829,12 @@ public actor EncryptedOperationLedger {
 
         let expectedIdentityData: Data = row["expectedSourceIdentity"]
         let observedIdentityData: Data? = row["observedDestinationIdentity"]
+        let authorizationData: Data = row["authorization"]
+        let repairReasonRaw: String? = row["repairReason"]
+        let repairReason = repairReasonRaw.flatMap(LedgerRepairReason.init(rawValue:))
+        if repairReasonRaw != nil, repairReason == nil {
+            throw LedgerStoreError.integrityCheckFailed
+        }
         let draft = try LedgerOperationDraft(
             id: row["id"],
             batchID: row["batchID"],
@@ -667,12 +845,14 @@ public actor EncryptedOperationLedger {
             destinationRootID: row["destinationRootID"],
             destinationPath: ScopedRelativePath(rawValue: row["destinationRelativePath"]),
             expectedSourceIdentity: try decodeIdentity(expectedIdentityData),
-            reversesOperationID: row["reversesOperationID"]
+            reversesOperationID: row["reversesOperationID"],
+            authorization: try decodeAuthorization(authorizationData)
         )
         return LedgerOperation(
             draft: draft,
             phase: phase,
             observedDestinationIdentity: try observedIdentityData.map(decodeIdentity),
+            repairReason: repairReason,
             createdAt: Date(timeIntervalSince1970: row["createdAt"]),
             updatedAt: Date(timeIntervalSince1970: row["updatedAt"])
         )
@@ -714,18 +894,113 @@ public actor EncryptedOperationLedger {
         return try decoder.decode(LedgerFileIdentity.self, from: data)
     }
 
-    private static func verifyIntegrity(_ database: DatabaseQueue) throws {
+    private static func encodeAuthorization(_ authorization: LedgerAuthorization) throws -> Data {
+        try JSONEncoder().encode(authorization)
+    }
+
+    private static func decodeAuthorization(_ data: Data) throws -> LedgerAuthorization {
+        try JSONDecoder().decode(LedgerAuthorization.self, from: data)
+    }
+
+    private static func preparePrivateDirectory(_ directory: URL) throws {
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: directory.path, isDirectory: &isDirectory) {
+            guard isDirectory.boolValue else {
+                throw LedgerStoreError.insecureStorageDirectory
+            }
+            let values = try directory.resourceValues(forKeys: [.isSymbolicLinkKey])
+            guard values.isSymbolicLink != true else {
+                throw LedgerStoreError.insecureStorageDirectory
+            }
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: directory.path
+            )
+        } else {
+            try fileManager.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        }
+        try verifyPrivatePermissions(at: directory, allowedMask: 0o700)
+    }
+
+    private static func verifyPrivatePermissions(at url: URL, allowedMask: Int) throws {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let permissions = attributes[.posixPermissions] as? NSNumber,
+              permissions.intValue & 0o077 == 0,
+              permissions.intValue & allowedMask == allowedMask else {
+            throw LedgerStoreError.insecureStorageDirectory
+        }
+    }
+
+    private static func synchronizeFile(at url: URL) throws {
+        let descriptor = Darwin.open(url.path, O_RDONLY | O_CLOEXEC)
+        guard descriptor >= 0 else {
+            throw LedgerStoreError.synchronizationFailed(errno)
+        }
+        defer { Darwin.close(descriptor) }
+        guard fcntl(descriptor, F_FULLFSYNC) == 0 else {
+            throw LedgerStoreError.synchronizationFailed(errno)
+        }
+    }
+
+    private static func synchronizeDirectory(at url: URL) throws {
+        let descriptor = Darwin.open(url.path, O_RDONLY | O_CLOEXEC)
+        guard descriptor >= 0 else {
+            throw LedgerStoreError.synchronizationFailed(errno)
+        }
+        defer { Darwin.close(descriptor) }
+        guard fsync(descriptor) == 0 else {
+            throw LedgerStoreError.synchronizationFailed(errno)
+        }
+    }
+
+    private static func verifyPhysicalIntegrity(_ database: DatabaseQueue) throws {
         try database.read { db in
             guard try db.cipherVersion.isEmpty == false else {
                 throw LedgerStoreError.integrityCheckFailed
             }
-            let quickCheck = try String.fetchAll(db, sql: "PRAGMA quick_check")
-            guard quickCheck == ["ok"] else {
+            let integrityCheck = try String.fetchAll(db, sql: "PRAGMA integrity_check")
+            guard integrityCheck == ["ok"] else {
                 throw LedgerStoreError.integrityCheckFailed
             }
             let foreignKeyFailures = try Row.fetchAll(db, sql: "PRAGMA foreign_key_check")
             guard foreignKeyFailures.isEmpty else {
                 throw LedgerStoreError.integrityCheckFailed
+            }
+        }
+    }
+
+    private static func verifyIntegrity(_ database: DatabaseQueue) throws {
+        try verifyPhysicalIntegrity(database)
+        try database.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM operations")
+            for row in rows {
+                let operation = try decodeOperation(row)
+                if operation.phase == .needsRepair {
+                    guard operation.repairReason != nil else {
+                        throw LedgerStoreError.integrityCheckFailed
+                    }
+                } else if operation.repairReason != nil {
+                    throw LedgerStoreError.integrityCheckFailed
+                }
+
+                let lastEventPhase = try String.fetchOne(
+                    db,
+                    sql: """
+                        SELECT phase FROM operationEvents
+                        WHERE operationID = ?
+                        ORDER BY sequence DESC
+                        LIMIT 1
+                        """,
+                    arguments: [operation.id]
+                )
+                guard lastEventPhase == operation.phase.rawValue else {
+                    throw LedgerStoreError.integrityCheckFailed
+                }
             }
         }
     }

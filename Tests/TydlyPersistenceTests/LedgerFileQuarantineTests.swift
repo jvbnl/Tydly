@@ -6,11 +6,16 @@ final class LedgerFileQuarantineTests: XCTestCase {
     func testQuarantineMovesDatabaseAndKnownSidecarsWithoutDeletingThem() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TydlyQuarantineTests-\(UUID().uuidString)", isDirectory: true)
+        let activeRoot = root.appendingPathComponent("Active", isDirectory: true)
         let quarantineRoot = root.appendingPathComponent("Quarantine", isDirectory: true)
-        let database = root.appendingPathComponent("ledger.sqlite")
+        let database = activeRoot.appendingPathComponent("ledger.sqlite")
         defer { try? FileManager.default.removeItem(at: root) }
 
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        try FileManager.default.createDirectory(
+            at: activeRoot,
+            withIntermediateDirectories: false
+        )
         try FileManager.default.createDirectory(
             at: quarantineRoot,
             withIntermediateDirectories: false
@@ -45,11 +50,16 @@ final class LedgerFileQuarantineTests: XCTestCase {
     func testQuarantineRejectsUnsafeIdentifier() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TydlyQuarantineTests-\(UUID().uuidString)", isDirectory: true)
+        let activeRoot = root.appendingPathComponent("Active", isDirectory: true)
         let quarantineRoot = root.appendingPathComponent("Quarantine", isDirectory: true)
-        let database = root.appendingPathComponent("ledger.sqlite")
+        let database = activeRoot.appendingPathComponent("ledger.sqlite")
         defer { try? FileManager.default.removeItem(at: root) }
 
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        try FileManager.default.createDirectory(
+            at: activeRoot,
+            withIntermediateDirectories: false
+        )
         try FileManager.default.createDirectory(
             at: quarantineRoot,
             withIntermediateDirectories: false

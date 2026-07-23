@@ -9,7 +9,8 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         defer { fixture.remove() }
 
         let ledger = try fixture.openLedger()
-        XCTAssertEqual(try await ledger.schemaVersion(), 1)
+        let schemaVersion = try await ledger.schemaVersion()
+        XCTAssertEqual(schemaVersion, 1)
         try await ledger.close()
 
         let header = Data(try Data(contentsOf: fixture.databaseURL).prefix(16))
@@ -44,10 +45,8 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         XCTAssertEqual(operations.count, 1)
         XCTAssertEqual(operations.first?.phase, .prepared)
         XCTAssertEqual(operations.first?.draft, draft)
-        XCTAssertEqual(
-            try await reopened.events(operationID: draft.id).map(\.phase),
-            [.prepared]
-        )
+        let phases = try await reopened.events(operationID: draft.id).map(\.phase)
+        XCTAssertEqual(phases, [.prepared])
         try await reopened.close()
     }
 
@@ -61,37 +60,32 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         _ = try await ledger.prepareBatch(id: draft.batchID, operations: [draft])
         let destinationIdentity = try fixture.destinationIdentity()
 
-        XCTAssertEqual(
-            try await ledger.reconcile(
-                operationID: draft.id,
-                observation: .matchingDestinationOnly,
-                observedDestinationIdentity: destinationIdentity
-            ),
-            .markApplied
+        let firstRecovery = try await ledger.reconcile(
+            operationID: draft.id,
+            observation: .matchingDestinationOnly,
+            observedDestinationIdentity: destinationIdentity
         )
-        XCTAssertEqual(try await ledger.operation(id: draft.id)?.phase, .applied)
+        XCTAssertEqual(firstRecovery, .markApplied)
+        let appliedOperation = try await ledger.operation(id: draft.id)
+        XCTAssertEqual(appliedOperation?.phase, .applied)
 
-        XCTAssertEqual(
-            try await ledger.reconcile(
-                operationID: draft.id,
-                observation: .matchingDestinationOnly
-            ),
-            .markCommitted
+        let secondRecovery = try await ledger.reconcile(
+            operationID: draft.id,
+            observation: .matchingDestinationOnly
         )
-        XCTAssertEqual(try await ledger.operation(id: draft.id)?.phase, .committed)
+        XCTAssertEqual(secondRecovery, .markCommitted)
+        let committedOperation = try await ledger.operation(id: draft.id)
+        XCTAssertEqual(committedOperation?.phase, .committed)
 
-        XCTAssertEqual(
-            try await ledger.reconcile(
-                operationID: draft.id,
-                observation: .matchingDestinationOnly
-            ),
-            .none
+        let finalRecovery = try await ledger.reconcile(
+            operationID: draft.id,
+            observation: .matchingDestinationOnly
         )
-        XCTAssertEqual(
-            try await ledger.events(operationID: draft.id).map(\.phase),
-            [.prepared, .applied, .committed]
-        )
-        XCTAssertEqual(try await ledger.batch(id: draft.batchID)?.status, .committed)
+        XCTAssertEqual(finalRecovery, .none)
+        let eventPhases = try await ledger.events(operationID: draft.id).map(\.phase)
+        XCTAssertEqual(eventPhases, [.prepared, .applied, .committed])
+        let batch = try await ledger.batch(id: draft.batchID)
+        XCTAssertEqual(batch?.status, .committed)
         try await ledger.close()
     }
 
@@ -104,16 +98,18 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         let draft = try fixture.moveDraft()
         _ = try await ledger.prepareBatch(id: draft.batchID, operations: [draft])
 
-        XCTAssertEqual(
-            try await ledger.reconcile(
-                operationID: draft.id,
-                observation: .matchingSourceAndDestination
-            ),
-            .holdForRepair(.ambiguousPresence)
+        let recovery = try await ledger.reconcile(
+            operationID: draft.id,
+            observation: .matchingSourceAndDestination
         )
-        XCTAssertEqual(try await ledger.operation(id: draft.id)?.phase, .needsRepair)
-        XCTAssertEqual(try await ledger.batch(id: draft.batchID)?.status, .needsRepair)
-        XCTAssertTrue(try await ledger.nonterminalOperations().isEmpty)
+        XCTAssertEqual(recovery, .holdForRepair(.ambiguousPresence))
+        let operation = try await ledger.operation(id: draft.id)
+        let batch = try await ledger.batch(id: draft.batchID)
+        let nonterminal = try await ledger.nonterminalOperations()
+        XCTAssertEqual(operation?.phase, .needsRepair)
+        XCTAssertEqual(operation?.repairReason, .ambiguousPresence)
+        XCTAssertEqual(batch?.status, .needsRepair)
+        XCTAssertTrue(nonterminal.isEmpty)
         try await ledger.close()
     }
 
@@ -143,7 +139,8 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             destinationRootID: move.sourceRootID,
             destinationPath: move.sourcePath,
             expectedSourceIdentity: destinationIdentity,
-            reversesOperationID: move.id
+            reversesOperationID: move.id,
+            authorization: .userApproval(planDigest: "undo-plan")
         )
         _ = try await ledger.prepareBatch(id: undo.batchID, operations: [undo])
         _ = try await ledger.transition(
@@ -153,8 +150,10 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         )
         _ = try await ledger.transition(operationID: undo.id, to: .committed)
 
-        XCTAssertEqual(try await ledger.batch(id: move.batchID)?.status, .undone)
-        XCTAssertEqual(try await ledger.batch(id: undo.batchID)?.status, .committed)
+        let moveBatch = try await ledger.batch(id: move.batchID)
+        let undoBatch = try await ledger.batch(id: undo.batchID)
+        XCTAssertEqual(moveBatch?.status, .undone)
+        XCTAssertEqual(undoBatch?.status, .committed)
         try await ledger.close()
     }
 
@@ -175,7 +174,8 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             destinationRootID: move.sourceRootID,
             destinationPath: move.sourcePath,
             expectedSourceIdentity: move.expectedSourceIdentity,
-            reversesOperationID: move.id
+            reversesOperationID: move.id,
+            authorization: .userApproval(planDigest: "undo-plan")
         )
 
         do {
@@ -187,7 +187,8 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? LedgerStoreError, .invalidInverseOperation)
         }
-        XCTAssertNil(try await ledger.batch(id: invalidUndo.batchID))
+        let invalidBatch = try await ledger.batch(id: invalidUndo.batchID)
+        XCTAssertNil(invalidBatch)
         try await ledger.close()
     }
 
@@ -209,7 +210,8 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             path: backupURL.path,
             keyStore: fixture.keyStore
         )
-        XCTAssertEqual(try await backup.operation(id: move.id)?.draft, move)
+        let backedUpOperation = try await backup.operation(id: move.id)
+        XCTAssertEqual(backedUpOperation?.draft, move)
         try await backup.integrityCheck()
         try await backup.close()
         try await ledger.close()
@@ -250,7 +252,8 @@ private struct Fixture {
             sourcePath: ScopedRelativePath(rawValue: "shot.png"),
             destinationRootID: "atlas",
             destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
-            expectedSourceIdentity: sourceIdentity()
+            expectedSourceIdentity: sourceIdentity(),
+            authorization: .userApproval(planDigest: "move-plan")
         )
     }
 

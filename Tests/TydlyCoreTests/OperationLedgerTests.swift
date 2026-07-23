@@ -130,7 +130,8 @@ final class OperationLedgerTests: XCTestCase {
                 sourcePath: ScopedRelativePath(rawValue: "shot.png"),
                 destinationRootID: "atlas",
                 destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
-                expectedSourceIdentity: identity
+                expectedSourceIdentity: identity,
+                authorization: .userApproval(planDigest: "plan")
             )
         ) {
             XCTAssertEqual($0 as? LedgerValidationError, .negativeOrdinal)
