@@ -24,6 +24,8 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
     case missingRepairReason
     case activeResourceConflict
     case synchronizationFailed(Int32)
+    case authorizationDigestMismatch
+    case repairRequired
 }
 
 public struct LedgerRootRecord: Identifiable, Equatable, Sendable {
@@ -164,8 +166,22 @@ public actor EncryptedOperationLedger {
         guard Set(operations.map(\.kind)).count == 1 else {
             throw LedgerStoreError.invalidBatchComposition
         }
+        let intentDigest = try LedgerIntentDigest.digest(
+            batchID: id,
+            intents: operations.map(\.intent)
+        )
+        guard operations.allSatisfy({ $0.authorization.intentDigest == intentDigest }) else {
+            throw LedgerStoreError.authorizationDigestMismatch
+        }
 
         return try database.write { db in
+            let repairCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM operations WHERE phase = 'needsRepair'"
+            ) ?? 0
+            guard repairCount == 0 else {
+                throw LedgerStoreError.repairRequired
+            }
             for operation in operations where operation.kind == .undo {
                 try Self.validateInverse(operation, in: db)
             }
@@ -451,6 +467,20 @@ public actor EncryptedOperationLedger {
         }
     }
 
+    public func operationsNeedingRepair() throws -> [LedgerOperation] {
+        try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM operations
+                    WHERE phase = 'needsRepair'
+                    ORDER BY updatedAt, batchID, ordinal
+                    """
+            )
+            return try rows.map(Self.decodeOperation)
+        }
+    }
+
     public func events(operationID: String) throws -> [LedgerEvent] {
         try database.read { db in
             let rows = try Row.fetchAll(
@@ -624,10 +654,10 @@ public actor EncryptedOperationLedger {
                     WHERE reversesOperationID IS NOT NULL AND phase != 'aborted';
                 CREATE UNIQUE INDEX oneActiveSource
                     ON operations(sourceRootID, sourceRelativePath)
-                    WHERE phase IN ('prepared', 'applied');
+                    WHERE phase IN ('prepared', 'applied', 'needsRepair');
                 CREATE UNIQUE INDEX oneActiveDestination
                     ON operations(destinationRootID, destinationRelativePath)
-                    WHERE phase IN ('prepared', 'applied');
+                    WHERE phase IN ('prepared', 'applied', 'needsRepair');
 
                 """)
         }
@@ -660,7 +690,7 @@ public actor EncryptedOperationLedger {
             db,
             sql: """
                 SELECT COUNT(*) FROM operations
-                WHERE phase IN ('prepared', 'applied')
+                WHERE phase IN ('prepared', 'applied', 'needsRepair')
                   AND (
                       (sourceRootID = ? AND sourceRelativePath = ?)
                       OR (destinationRootID = ? AND destinationRelativePath = ?)

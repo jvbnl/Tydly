@@ -98,14 +98,23 @@ public enum LedgerOperationKind: String, Codable, Equatable, Sendable {
 /// representable here.
 public enum LedgerAuthorization: Codable, Equatable, Sendable {
     case userApproval(planDigest: String)
-    case promotedRule(ruleID: String, revision: Int)
+    case promotedRule(ruleID: String, revision: Int, intentDigest: String)
+
+    public var intentDigest: String {
+        switch self {
+        case .userApproval(let planDigest):
+            return planDigest
+        case .promotedRule(_, _, let intentDigest):
+            return intentDigest
+        }
+    }
 
     var isValid: Bool {
         switch self {
         case .userApproval(let planDigest):
             return !planDigest.isEmpty
-        case .promotedRule(let ruleID, let revision):
-            return !ruleID.isEmpty && revision >= 0
+        case .promotedRule(let ruleID, let revision, let intentDigest):
+            return !ruleID.isEmpty && revision >= 0 && !intentDigest.isEmpty
         }
     }
 }
@@ -127,9 +136,8 @@ public enum LedgerOperationPhase: String, Codable, CaseIterable, Equatable, Send
     }
 }
 
-/// Immutable operation intent. An undo is another operation whose `reversesOperationID`
-/// points to the exact committed move it reverses.
-public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
+/// Immutable operation facts before consent or promoted-rule authorization is attached.
+public struct LedgerOperationIntent: Identifiable, Codable, Equatable, Sendable {
     public let id: String
     public let batchID: String
     public let ordinal: Int
@@ -140,7 +148,6 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
     public let destinationPath: ScopedRelativePath
     public let expectedSourceIdentity: LedgerFileIdentity
     public let reversesOperationID: String?
-    public let authorization: LedgerAuthorization
 
     public init(
         id: String,
@@ -152,8 +159,7 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
         destinationRootID: String,
         destinationPath: ScopedRelativePath,
         expectedSourceIdentity: LedgerFileIdentity,
-        reversesOperationID: String? = nil,
-        authorization: LedgerAuthorization
+        reversesOperationID: String? = nil
     ) throws {
         guard !id.isEmpty, !batchID.isEmpty, !sourceRootID.isEmpty, !destinationRootID.isEmpty else {
             throw LedgerValidationError.emptyIdentifier
@@ -170,9 +176,6 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
         guard sourceRootID != destinationRootID || sourcePath != destinationPath else {
             throw LedgerValidationError.identicalSourceAndDestination
         }
-        guard authorization.isValid else {
-            throw LedgerValidationError.invalidAuthorization
-        }
         self.id = id
         self.batchID = batchID
         self.ordinal = ordinal
@@ -183,21 +186,6 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
         self.destinationPath = destinationPath
         self.expectedSourceIdentity = expectedSourceIdentity
         self.reversesOperationID = reversesOperationID
-        self.authorization = authorization
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case batchID
-        case ordinal
-        case kind
-        case sourceRootID
-        case sourcePath
-        case destinationRootID
-        case destinationPath
-        case expectedSourceIdentity
-        case reversesOperationID
-        case authorization
     }
 
     public init(from decoder: Decoder) throws {
@@ -215,8 +203,76 @@ public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
                 LedgerFileIdentity.self,
                 forKey: .expectedSourceIdentity
             ),
-            reversesOperationID: values.decodeIfPresent(String.self, forKey: .reversesOperationID),
-            authorization: values.decode(LedgerAuthorization.self, forKey: .authorization)
+            reversesOperationID: values.decodeIfPresent(String.self, forKey: .reversesOperationID)
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case batchID
+        case ordinal
+        case kind
+        case sourceRootID
+        case sourcePath
+        case destinationRootID
+        case destinationPath
+        case expectedSourceIdentity
+        case reversesOperationID
+    }
+}
+
+/// Authorized operation intent. An undo intent points to the exact committed move it
+/// reverses, and authorization must be bound to the canonical digest of the complete batch.
+public struct LedgerOperationDraft: Identifiable, Codable, Equatable, Sendable {
+    public let intent: LedgerOperationIntent
+    public let authorization: LedgerAuthorization
+
+    public var id: String { intent.id }
+    public var batchID: String { intent.batchID }
+    public var ordinal: Int { intent.ordinal }
+    public var kind: LedgerOperationKind { intent.kind }
+    public var sourceRootID: String { intent.sourceRootID }
+    public var sourcePath: ScopedRelativePath { intent.sourcePath }
+    public var destinationRootID: String { intent.destinationRootID }
+    public var destinationPath: ScopedRelativePath { intent.destinationPath }
+    public var expectedSourceIdentity: LedgerFileIdentity { intent.expectedSourceIdentity }
+    public var reversesOperationID: String? { intent.reversesOperationID }
+
+    public init(intent: LedgerOperationIntent, authorization: LedgerAuthorization) throws {
+        guard authorization.isValid else {
+            throw LedgerValidationError.invalidAuthorization
+        }
+        self.intent = intent
+        self.authorization = authorization
+    }
+
+    public init(
+        id: String,
+        batchID: String,
+        ordinal: Int,
+        kind: LedgerOperationKind,
+        sourceRootID: String,
+        sourcePath: ScopedRelativePath,
+        destinationRootID: String,
+        destinationPath: ScopedRelativePath,
+        expectedSourceIdentity: LedgerFileIdentity,
+        reversesOperationID: String? = nil,
+        authorization: LedgerAuthorization
+    ) throws {
+        try self.init(
+            intent: LedgerOperationIntent(
+                id: id,
+                batchID: batchID,
+                ordinal: ordinal,
+                kind: kind,
+                sourceRootID: sourceRootID,
+                sourcePath: sourcePath,
+                destinationRootID: destinationRootID,
+                destinationPath: destinationPath,
+                expectedSourceIdentity: expectedSourceIdentity,
+                reversesOperationID: reversesOperationID
+            ),
+            authorization: authorization
         )
     }
 }

@@ -110,6 +110,69 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         XCTAssertEqual(operation?.repairReason, .ambiguousPresence)
         XCTAssertEqual(batch?.status, .needsRepair)
         XCTAssertTrue(nonterminal.isEmpty)
+        let repairs = try await ledger.operationsNeedingRepair()
+        XCTAssertEqual(repairs.map(\.id), [draft.id])
+
+        let nextIntent = try LedgerOperationIntent(
+            id: "move-after-repair",
+            batchID: "batch-after-repair",
+            ordinal: 0,
+            kind: .move,
+            sourceRootID: "desktop",
+            sourcePath: ScopedRelativePath(rawValue: "other.png"),
+            destinationRootID: "atlas",
+            destinationPath: ScopedRelativePath(rawValue: "Screens/other.png"),
+            expectedSourceIdentity: try LedgerFileIdentity(
+                volumeID: "volume",
+                fileID: "other",
+                byteCount: 1,
+                modifiedAt: Date(timeIntervalSince1970: 3),
+                fingerprint: "other-fingerprint"
+            )
+        )
+        let nextDigest = try LedgerIntentDigest.digest(
+            batchID: nextIntent.batchID,
+            intents: [nextIntent]
+        )
+        let nextDraft = try LedgerOperationDraft(
+            intent: nextIntent,
+            authorization: .userApproval(planDigest: nextDigest)
+        )
+        do {
+            _ = try await ledger.prepareBatch(
+                id: nextDraft.batchID,
+                operations: [nextDraft]
+            )
+            XCTFail("unresolved repair must block every new mutation intent")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .repairRequired)
+        }
+        try await ledger.close()
+    }
+
+    func testAuthorizationDigestBindsExactBatchIntent() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let ledger = try fixture.openLedger()
+        try await fixture.registerRoots(in: ledger)
+        let valid = try fixture.moveDraft()
+        let forged = try LedgerOperationDraft(
+            intent: valid.intent,
+            authorization: .userApproval(planDigest: "not-the-intent-digest")
+        )
+
+        do {
+            _ = try await ledger.prepareBatch(
+                id: forged.batchID,
+                operations: [forged]
+            )
+            XCTFail("authorization must be bound to the exact canonical batch")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .authorizationDigestMismatch)
+        }
+        let batch = try await ledger.batch(id: forged.batchID)
+        XCTAssertNil(batch)
         try await ledger.close()
     }
 
@@ -197,7 +260,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         try await fixture.registerRoots(in: ledger)
         let first = try fixture.moveDraft()
         _ = try await ledger.prepareBatch(id: first.batchID, operations: [first])
-        let conflicting = try LedgerOperationDraft(
+        let conflictingIntent = try LedgerOperationIntent(
             id: "move-2",
             batchID: "batch-2",
             ordinal: 0,
@@ -206,8 +269,15 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             sourcePath: first.destinationPath,
             destinationRootID: first.sourceRootID,
             destinationPath: try ScopedRelativePath(rawValue: "other.png"),
-            expectedSourceIdentity: try fixture.destinationIdentity(),
-            authorization: .userApproval(planDigest: "other-plan")
+            expectedSourceIdentity: try fixture.destinationIdentity()
+        )
+        let conflictingDigest = try LedgerIntentDigest.digest(
+            batchID: conflictingIntent.batchID,
+            intents: [conflictingIntent]
+        )
+        let conflicting = try LedgerOperationDraft(
+            intent: conflictingIntent,
+            authorization: .userApproval(planDigest: conflictingDigest)
         )
 
         do {
@@ -254,7 +324,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         )
         _ = try await ledger.transition(operationID: move.id, to: .committed)
 
-        let undo = try LedgerOperationDraft(
+        let undoIntent = try LedgerOperationIntent(
             id: "undo-1",
             batchID: "undo-batch",
             ordinal: 0,
@@ -264,8 +334,15 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             destinationRootID: move.sourceRootID,
             destinationPath: move.sourcePath,
             expectedSourceIdentity: destinationIdentity,
-            reversesOperationID: move.id,
-            authorization: .userApproval(planDigest: "undo-plan")
+            reversesOperationID: move.id
+        )
+        let undoDigest = try LedgerIntentDigest.digest(
+            batchID: undoIntent.batchID,
+            intents: [undoIntent]
+        )
+        let undo = try LedgerOperationDraft(
+            intent: undoIntent,
+            authorization: .userApproval(planDigest: undoDigest)
         )
         _ = try await ledger.prepareBatch(id: undo.batchID, operations: [undo])
         _ = try await ledger.transition(
@@ -289,7 +366,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         let ledger = try fixture.openLedger()
         try await fixture.registerRoots(in: ledger)
         let move = try fixture.moveDraft()
-        let invalidUndo = try LedgerOperationDraft(
+        let invalidUndoIntent = try LedgerOperationIntent(
             id: "undo-invalid",
             batchID: "undo-batch",
             ordinal: 0,
@@ -299,8 +376,15 @@ final class EncryptedOperationLedgerTests: XCTestCase {
             destinationRootID: move.sourceRootID,
             destinationPath: move.sourcePath,
             expectedSourceIdentity: move.expectedSourceIdentity,
-            reversesOperationID: move.id,
-            authorization: .userApproval(planDigest: "undo-plan")
+            reversesOperationID: move.id
+        )
+        let invalidUndoDigest = try LedgerIntentDigest.digest(
+            batchID: invalidUndoIntent.batchID,
+            intents: [invalidUndoIntent]
+        )
+        let invalidUndo = try LedgerOperationDraft(
+            intent: invalidUndoIntent,
+            authorization: .userApproval(planDigest: invalidUndoDigest)
         )
 
         do {
@@ -368,7 +452,7 @@ private struct Fixture {
     }
 
     func moveDraft() throws -> LedgerOperationDraft {
-        try LedgerOperationDraft(
+        let intent = try LedgerOperationIntent(
             id: "move-1",
             batchID: "move-batch",
             ordinal: 0,
@@ -377,8 +461,15 @@ private struct Fixture {
             sourcePath: ScopedRelativePath(rawValue: "shot.png"),
             destinationRootID: "atlas",
             destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
-            expectedSourceIdentity: sourceIdentity(),
-            authorization: .userApproval(planDigest: "move-plan")
+            expectedSourceIdentity: sourceIdentity()
+        )
+        let digest = try LedgerIntentDigest.digest(
+            batchID: intent.batchID,
+            intents: [intent]
+        )
+        return try LedgerOperationDraft(
+            intent: intent,
+            authorization: .userApproval(planDigest: digest)
         )
     }
 

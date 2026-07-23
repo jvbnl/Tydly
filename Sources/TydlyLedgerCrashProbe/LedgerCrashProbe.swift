@@ -99,7 +99,7 @@ enum LedgerCrashProbe {
     }
 
     private static func operationDraft() throws -> LedgerOperationDraft {
-        try LedgerOperationDraft(
+        let intent = try LedgerOperationIntent(
             id: "move-1",
             batchID: "batch-1",
             ordinal: 0,
@@ -108,8 +108,15 @@ enum LedgerCrashProbe {
             sourcePath: ScopedRelativePath(rawValue: "shot.png"),
             destinationRootID: "atlas",
             destinationPath: ScopedRelativePath(rawValue: "Screens/shot.png"),
-            expectedSourceIdentity: sourceIdentity(),
-            authorization: .userApproval(planDigest: "crash-probe-plan")
+            expectedSourceIdentity: sourceIdentity()
+        )
+        let digest = try LedgerIntentDigest.digest(
+            batchID: intent.batchID,
+            intents: [intent]
+        )
+        return try LedgerOperationDraft(
+            intent: intent,
+            authorization: .userApproval(planDigest: digest)
         )
     }
 
