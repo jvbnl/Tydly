@@ -33,6 +33,7 @@ reject_key() {
 
 require_true "com.apple.security.app-sandbox" "$DECLARED_ENTITLEMENTS"
 require_true "com.apple.security.files.user-selected.read-write" "$DECLARED_ENTITLEMENTS"
+require_true "com.apple.security.files.bookmarks.app-scope" "$DECLARED_ENTITLEMENTS"
 /usr/libexec/PlistBuddy \
 	-c "Print :com.apple.application-identifier" \
 	"$DECLARED_ENTITLEMENTS" >/dev/null
@@ -56,6 +57,7 @@ codesign -d --entitlements :- "$APP" >"$RUNTIME_ENTITLEMENTS" 2>/dev/null
 
 require_true "com.apple.security.app-sandbox" "$RUNTIME_ENTITLEMENTS"
 require_true "com.apple.security.files.user-selected.read-write" "$RUNTIME_ENTITLEMENTS"
+require_true "com.apple.security.files.bookmarks.app-scope" "$RUNTIME_ENTITLEMENTS"
 APPLICATION_IDENTIFIER="$(
 	/usr/libexec/PlistBuddy \
 		-c "Print :com.apple.application-identifier" \

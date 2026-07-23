@@ -2,6 +2,44 @@ import FileProvider
 import Foundation
 import TydlyCore
 
+public struct FoundationTrustedRootLocator: TrustedRootLocating {
+    public init() {}
+
+    public func requiredURL(for purpose: RootPurpose) -> URL? {
+        switch purpose {
+        case .sourceDesktop:
+            return FileManager.default.urls(
+                for: .desktopDirectory,
+                in: .userDomainMask
+            ).first
+        case .sourceDownloads:
+            return FileManager.default.urls(
+                for: .downloadsDirectory,
+                in: .userDomainMask
+            ).first
+        case .destination, .legacy:
+            return nil
+        }
+    }
+
+    public var forbiddenBroadRoots: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            URL(fileURLWithPath: "/", isDirectory: true),
+            URL(fileURLWithPath: "/Users", isDirectory: true),
+            URL(fileURLWithPath: "/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/Library", isDirectory: true),
+            URL(fileURLWithPath: "/System", isDirectory: true),
+            URL(fileURLWithPath: "/private", isDirectory: true),
+            URL(fileURLWithPath: "/Volumes", isDirectory: true),
+            home,
+            home.appendingPathComponent("Library", isDirectory: true),
+            home.appendingPathComponent("Library/CloudStorage", isDirectory: true),
+            home.appendingPathComponent("Library/Mobile Documents", isDirectory: true)
+        ]
+    }
+}
+
 public struct FoundationBookmarkCodec: SecurityScopedBookmarkCoding {
     public init() {}
 
@@ -51,6 +89,7 @@ public struct FoundationRootInspector: RootResourceInspecting {
             .isUbiquitousItemKey,
             .localizedNameKey,
             .volumeIdentifierKey,
+            .volumeURLKey,
             .fileResourceIdentifierKey,
             .volumeIsLocalKey,
             .volumeIsReadOnlyKey
@@ -58,8 +97,14 @@ public struct FoundationRootInspector: RootResourceInspecting {
 
         let volumeID = try Self.opaqueIdentifier(values.volumeIdentifier)
         let fileID = try Self.opaqueIdentifier(values.fileResourceIdentifier)
-        let providerBacked = values.isUbiquitousItem == true
-            || await isManagedByFileProvider(url)
+        let managedByFileProvider = await isManagedByFileProvider(url)
+        let providerBacked = values.isUbiquitousItem == true || managedByFileProvider
+        let isVolumeRoot: Bool
+        if let volumeURL = values.volume {
+            isVolumeRoot = try relationship(of: volumeURL, to: url) == .same
+        } else {
+            isVolumeRoot = true
+        }
 
         return RootInspection(
             displayName: values.localizedName ?? url.lastPathComponent,
@@ -69,7 +114,8 @@ public struct FoundationRootInspector: RootResourceInspecting {
             isPackage: values.isPackage == true,
             isLocalVolume: values.volumeIsLocal == true,
             isReadOnlyVolume: values.volumeIsReadOnly != false,
-            isProviderBacked: providerBacked
+            isProviderBacked: providerBacked,
+            isVolumeRoot: isVolumeRoot
         )
     }
 

@@ -7,81 +7,188 @@ public actor RootCapabilityStore {
     private let bookmarkCodec: any SecurityScopedBookmarkCoding
     private let inspector: any RootResourceInspecting
     private let scopeAccessor: any SecurityScopeAccessing
+    private let trustedRoots: any TrustedRootLocating
     private let makeUUID: @Sendable () -> UUID
+    private var operationInProgress = false
 
     public init(
         ledger: EncryptedOperationLedger,
         bookmarkCodec: any SecurityScopedBookmarkCoding = FoundationBookmarkCodec(),
         inspector: any RootResourceInspecting = FoundationRootInspector(),
         scopeAccessor: any SecurityScopeAccessing = FoundationSecurityScopeAccessor(),
+        trustedRoots: any TrustedRootLocating = FoundationTrustedRootLocator(),
         makeUUID: @escaping @Sendable () -> UUID = UUID.init
     ) {
         self.ledger = ledger
         self.bookmarkCodec = bookmarkCodec
         self.inspector = inspector
         self.scopeAccessor = scopeAccessor
+        self.trustedRoots = trustedRoots
         self.makeUUID = makeUUID
     }
 
-    /// Persists a URL returned directly by NSOpenPanel. Powerbox starts implicit access for
-    /// that URL, so this method always relinquishes it before returning.
     public func registerPanelSelection(
         logicalRootID: String,
         purpose: RootPurpose,
-        selectedURL: URL,
-        requiredURL: URL? = nil
+        selectedURL: URL
     ) async throws -> RootGenerationDescriptor {
-        defer { selectedURL.stopAccessingSecurityScopedResource() }
-
-        let inspection = try await inspector.inspect(selectedURL)
-        let context = try await policyContext(
-            selectedURL: selectedURL,
-            logicalRootID: logicalRootID,
-            purpose: purpose,
-            requiredURL: requiredURL
-        )
-        try RootSelectionPolicy.validate(
-            inspection: inspection,
-            purpose: purpose,
-            context: context
-        )
-
-        if let binding = try await ledger.rootBinding(logicalRootID: logicalRootID),
-           let active = try await ledger.activeRoot(logicalRootID: logicalRootID),
-           binding.status == .active,
-           active.descriptor.purpose == purpose,
-           active.descriptor.identity == inspection.identity {
-            return active.descriptor
-        }
-
-        let bookmark: Data
-        do {
-            bookmark = try bookmarkCodec.createBookmark(for: selectedURL)
-        } catch {
-            throw RootCapabilityError.bookmarkCreationFailed
-        }
-
-        let generations = try await ledger.rootGenerations(logicalRootID: logicalRootID)
-        let generation = (generations.last?.descriptor.generation ?? -1) + 1
-        let descriptor = try RootGenerationDescriptor(
-            id: makeUUID().uuidString,
-            logicalRootID: logicalRootID,
-            generation: generation,
-            purpose: purpose,
-            displayName: inspection.displayName,
-            identity: inspection.identity
-        )
-        try await ledger.registerRootGeneration(
-            descriptor,
-            bookmark: bookmark,
-            status: .active
-        )
-        return descriptor
+        try await registerPanelSelections(
+            [
+                RootPanelSelection(
+                    logicalRootID: logicalRootID,
+                    purpose: purpose,
+                    url: selectedURL
+                )
+            ]
+        )[0]
     }
 
-    /// Resolves the active bookmark without UI or mounting. Failures mark the logical root
-    /// for explicit reauthorization; there is never an absolute-path fallback.
-    public func resolve(logicalRootID: String) async throws -> SecurityScopedRootLease {
+    /// Validates every Powerbox selection as one set, then commits all bookmark generations
+    /// and binding changes in one SQL transaction. Cancellation before this call stores none.
+    public func registerPanelSelections(
+        _ selections: [RootPanelSelection]
+    ) async throws -> [RootGenerationDescriptor] {
+        try beginExclusiveOperation()
+        defer { endExclusiveOperation() }
+        defer {
+            // NSOpenPanel implicitly starts each selected URL.
+            for selection in selections {
+                selection.url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        guard !selections.isEmpty,
+              Set(selections.map(\.logicalRootID)).count == selections.count else {
+            throw RootCapabilityError.duplicateSelection
+        }
+
+        let replacingLogicalIDs = Set(selections.map(\.logicalRootID))
+        let existing = try await existingRootsForValidation(
+            excluding: replacingLogicalIDs
+        )
+        defer { existing.forEach { scopeAccessor.stopAccessing($0.url) } }
+
+        var inspections: [URL: RootInspection] = [:]
+        for selection in selections {
+            inspections[selection.url] = try await inspector.inspect(selection.url)
+        }
+
+        for selection in selections {
+            guard let inspection = inspections[selection.url] else {
+                throw RootCapabilityError.bindingUnavailable
+            }
+            let otherSelectedURLs = selections
+                .filter { $0.logicalRootID != selection.logicalRootID }
+                .map(\.url)
+            let context = try policyContext(
+                selectedURL: selection.url,
+                purpose: selection.purpose,
+                otherRootURLs: existing.map(\.url) + otherSelectedURLs
+            )
+            try RootSelectionPolicy.validate(
+                inspection: inspection,
+                purpose: selection.purpose,
+                context: context
+            )
+        }
+
+        var registrations: [RootGenerationRegistration] = []
+        for selection in selections {
+            guard let inspection = inspections[selection.url] else {
+                throw RootCapabilityError.bindingUnavailable
+            }
+            let bookmark: Data
+            do {
+                bookmark = try bookmarkCodec.createBookmark(for: selection.url)
+            } catch {
+                throw RootCapabilityError.bookmarkCreationFailed
+            }
+            let generations = try await ledger.rootGenerations(
+                logicalRootID: selection.logicalRootID
+            )
+            let generation = (generations.last?.descriptor.generation ?? -1) + 1
+            let descriptor = try RootGenerationDescriptor(
+                id: makeUUID().uuidString,
+                logicalRootID: selection.logicalRootID,
+                generation: generation,
+                purpose: selection.purpose,
+                displayName: inspection.displayName,
+                identity: inspection.identity
+            )
+            registrations.append(
+                RootGenerationRegistration(
+                    descriptor: descriptor,
+                    bookmark: bookmark,
+                    status: .active
+                )
+            )
+        }
+
+        try await ledger.registerRootGenerations(registrations)
+        return registrations.map(\.descriptor)
+    }
+
+    /// Keeps the security scope and the store's exclusive capability operation alive for the
+    /// complete closure, then always relinquishes access before returning or throwing.
+    public func withResolvedRoot<T: Sendable>(
+        logicalRootID: String,
+        _ operation: @Sendable (URL, RootGenerationDescriptor) async throws -> T
+    ) async throws -> T {
+        try beginExclusiveOperation()
+        defer { endExclusiveOperation() }
+        let lease = try await resolveLease(
+            logicalRootID: logicalRootID,
+            expectedRootGenerationID: nil
+        )
+        defer { lease.close() }
+        return try await operation(lease.url, lease.descriptor)
+    }
+
+    /// Mutation plans use immutable generation IDs. If bookmark refresh changes the active
+    /// generation, this method fails so the plan must be rebuilt and approved again.
+    public func withResolvedRootGeneration<T: Sendable>(
+        rootGenerationID: String,
+        _ operation: @Sendable (URL, RootGenerationDescriptor) async throws -> T
+    ) async throws -> T {
+        try beginExclusiveOperation()
+        defer { endExclusiveOperation() }
+        guard let root = try await ledger.root(id: rootGenerationID) else {
+            throw RootCapabilityError.bindingUnavailable
+        }
+        let lease = try await resolveLease(
+            logicalRootID: root.descriptor.logicalRootID,
+            expectedRootGenerationID: rootGenerationID
+        )
+        defer { lease.close() }
+        return try await operation(lease.url, lease.descriptor)
+    }
+
+    public func hasActiveBindings(_ logicalRootIDs: Set<String>) async throws -> Bool {
+        let bindings = try await ledger.rootBindings()
+        let active = Set(
+            bindings
+                .filter { $0.status == .active }
+                .map(\.id)
+        )
+        return logicalRootIDs.isSubset(of: active)
+    }
+
+    public func markNeedsReauthorization(
+        _ logicalRootID: String,
+        expectedActiveRootID: String
+    ) async throws {
+        try beginExclusiveOperation()
+        defer { endExclusiveOperation() }
+        try await markNeedsReauthorizationWithoutLock(
+            logicalRootID,
+            expectedActiveRootID: expectedActiveRootID
+        )
+    }
+
+    private func resolveLease(
+        logicalRootID: String,
+        expectedRootGenerationID: String?
+    ) async throws -> SecurityScopedRootLease {
         guard let binding = try await ledger.rootBinding(logicalRootID: logicalRootID),
               let root = try await ledger.activeRoot(logicalRootID: logicalRootID) else {
             throw RootCapabilityError.bindingUnavailable
@@ -89,30 +196,45 @@ public actor RootCapabilityStore {
         guard binding.status == .active else {
             throw RootCapabilityError.needsReauthorization
         }
+        if let expectedRootGenerationID, root.id != expectedRootGenerationID {
+            throw RootCapabilityError.generationChanged
+        }
 
         let resolution: BookmarkResolution
         do {
             resolution = try bookmarkCodec.resolveBookmark(root.bookmark)
         } catch {
-            try? await markNeedsReauthorization(logicalRootID)
+            try? await markNeedsReauthorizationWithoutLock(
+                logicalRootID,
+                expectedActiveRootID: root.id
+            )
             throw RootCapabilityError.bookmarkResolutionFailed
         }
         guard scopeAccessor.startAccessing(resolution.url) else {
-            try? await markNeedsReauthorization(logicalRootID)
+            try? await markNeedsReauthorizationWithoutLock(
+                logicalRootID,
+                expectedActiveRootID: root.id
+            )
             throw RootCapabilityError.accessDenied
         }
+
+        let existing = try await existingRootsForValidation(
+            excluding: [logicalRootID]
+        )
+        defer { existing.forEach { scopeAccessor.stopAccessing($0.url) } }
 
         var descriptor = root.descriptor
         do {
             let inspection = try await inspector.inspect(resolution.url)
+            let context = try policyContext(
+                selectedURL: resolution.url,
+                purpose: descriptor.purpose,
+                otherRootURLs: existing.map(\.url)
+            )
             try RootSelectionPolicy.validate(
                 inspection: inspection,
                 purpose: descriptor.purpose,
-                context: RootPolicyContext(
-                    matchesRequiredFolder: true,
-                    isHomeOrFilesystemRoot: false,
-                    overlapsExistingRoot: false
-                )
+                context: context
             )
             guard inspection.identity == descriptor.identity else {
                 throw RootCapabilityError.identityChanged
@@ -133,10 +255,16 @@ public actor RootCapabilityStore {
                     bookmark: refreshedBookmark,
                     status: .active
                 )
+                if expectedRootGenerationID != nil {
+                    throw RootCapabilityError.generationChanged
+                }
             }
         } catch {
             scopeAccessor.stopAccessing(resolution.url)
-            try? await markNeedsReauthorization(logicalRootID)
+            try? await markNeedsReauthorizationWithoutLock(
+                logicalRootID,
+                expectedActiveRootID: root.id
+            )
             if let capabilityError = error as? RootCapabilityError {
                 throw capabilityError
             }
@@ -150,22 +278,79 @@ public actor RootCapabilityStore {
         )
     }
 
-    public func markNeedsReauthorization(_ logicalRootID: String) async throws {
-        try await ledger.updateRootBindingStatus(
-            logicalRootID: logicalRootID,
-            status: .needsReauthorization
-        )
+    private func existingRootsForValidation(
+        excluding logicalRootIDs: Set<String>
+    ) async throws -> [ExistingValidationRoot] {
+        var result: [ExistingValidationRoot] = []
+        do {
+            for binding in try await ledger.rootBindings()
+                where !logicalRootIDs.contains(binding.id) {
+                guard binding.status == .active,
+                      let root = try await ledger.activeRoot(logicalRootID: binding.id) else {
+                    throw RootCapabilityError.existingRootUnavailable
+                }
+                let resolution: BookmarkResolution
+                do {
+                    resolution = try bookmarkCodec.resolveBookmark(root.bookmark)
+                } catch {
+                    try? await markNeedsReauthorizationWithoutLock(
+                        binding.id,
+                        expectedActiveRootID: root.id
+                    )
+                    throw RootCapabilityError.existingRootUnavailable
+                }
+                guard scopeAccessor.startAccessing(resolution.url) else {
+                    try? await markNeedsReauthorizationWithoutLock(
+                        binding.id,
+                        expectedActiveRootID: root.id
+                    )
+                    throw RootCapabilityError.existingRootUnavailable
+                }
+                do {
+                    let inspection = try await inspector.inspect(resolution.url)
+                    let context = try policyContext(
+                        selectedURL: resolution.url,
+                        purpose: root.descriptor.purpose,
+                        otherRootURLs: []
+                    )
+                    try RootSelectionPolicy.validate(
+                        inspection: inspection,
+                        purpose: root.descriptor.purpose,
+                        context: context
+                    )
+                    guard inspection.identity == root.descriptor.identity else {
+                        throw RootCapabilityError.identityChanged
+                    }
+                } catch {
+                    scopeAccessor.stopAccessing(resolution.url)
+                    try? await markNeedsReauthorizationWithoutLock(
+                        binding.id,
+                        expectedActiveRootID: root.id
+                    )
+                    throw RootCapabilityError.existingRootUnavailable
+                }
+                result.append(
+                    ExistingValidationRoot(
+                        url: resolution.url,
+                        descriptor: root.descriptor
+                    )
+                )
+            }
+            return result
+        } catch {
+            result.forEach { scopeAccessor.stopAccessing($0.url) }
+            throw error
+        }
     }
 
     private func policyContext(
         selectedURL: URL,
-        logicalRootID: String,
         purpose: RootPurpose,
-        requiredURL: URL?
-    ) async throws -> RootPolicyContext {
+        otherRootURLs: [URL]
+    ) throws -> RootPolicyContext {
         let matchesRequiredFolder: Bool
         if purpose == .sourceDesktop || purpose == .sourceDownloads {
-            guard let requiredURL else {
+            guard let requiredURL = trustedRoots.requiredURL(for: purpose) else {
                 throw RootCapabilityError.wrongRequiredFolder
             }
             matchesRequiredFolder = try inspector.relationship(
@@ -176,44 +361,33 @@ public actor RootCapabilityStore {
             matchesRequiredFolder = true
         }
 
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let filesystemRoot = URL(fileURLWithPath: "/", isDirectory: true)
-        let isHomeOrFilesystemRoot = try inspector.relationship(
-            of: home,
-            to: selectedURL
-        ) == .same || inspector.relationship(
-            of: filesystemRoot,
-            to: selectedURL
-        ) == .same
+        var isBroadRoot = false
+        for forbidden in trustedRoots.forbiddenBroadRoots {
+            let forbiddenContainsSelection = try inspector.relationship(
+                of: forbidden,
+                to: selectedURL
+            )
+            let selectionContainsForbidden = try inspector.relationship(
+                of: selectedURL,
+                to: forbidden
+            )
+            if forbiddenContainsSelection == .same
+                || selectionContainsForbidden == .same
+                || selectionContainsForbidden == .contains {
+                isBroadRoot = true
+                break
+            }
+        }
 
         var overlapsExistingRoot = false
-        for binding in try await ledger.rootBindings() where binding.id != logicalRootID {
-            guard binding.status == .active else {
-                throw RootCapabilityError.existingRootUnavailable
-            }
-            guard let existing = try await ledger.activeRoot(logicalRootID: binding.id) else {
-                throw RootCapabilityError.existingRootUnavailable
-            }
-            let resolution: BookmarkResolution
-            do {
-                resolution = try bookmarkCodec.resolveBookmark(existing.bookmark)
-            } catch {
-                try? await markNeedsReauthorization(binding.id)
-                throw RootCapabilityError.existingRootUnavailable
-            }
-            guard scopeAccessor.startAccessing(resolution.url) else {
-                try? await markNeedsReauthorization(binding.id)
-                throw RootCapabilityError.existingRootUnavailable
-            }
-            defer { scopeAccessor.stopAccessing(resolution.url) }
-
+        for otherURL in otherRootURLs {
             let existingContainsSelected = try inspector.relationship(
-                of: resolution.url,
+                of: otherURL,
                 to: selectedURL
             )
             let selectedContainsExisting = try inspector.relationship(
                 of: selectedURL,
-                to: resolution.url
+                to: otherURL
             )
             if existingContainsSelected == .same
                 || existingContainsSelected == .contains
@@ -226,8 +400,35 @@ public actor RootCapabilityStore {
 
         return RootPolicyContext(
             matchesRequiredFolder: matchesRequiredFolder,
-            isHomeOrFilesystemRoot: isHomeOrFilesystemRoot,
+            isHomeOrFilesystemRoot: isBroadRoot,
             overlapsExistingRoot: overlapsExistingRoot
         )
     }
+
+    private func markNeedsReauthorizationWithoutLock(
+        _ logicalRootID: String,
+        expectedActiveRootID: String
+    ) async throws {
+        try await ledger.updateRootBindingStatus(
+            logicalRootID: logicalRootID,
+            expectedActiveRootID: expectedActiveRootID,
+            status: .needsReauthorization
+        )
+    }
+
+    private func beginExclusiveOperation() throws {
+        guard !operationInProgress else {
+            throw RootCapabilityError.operationInProgress
+        }
+        operationInProgress = true
+    }
+
+    private func endExclusiveOperation() {
+        operationInProgress = false
+    }
+}
+
+private struct ExistingValidationRoot {
+    let url: URL
+    let descriptor: RootGenerationDescriptor
 }

@@ -281,6 +281,16 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         XCTAssertEqual(active?.descriptor, second)
         XCTAssertEqual(generations.map(\.descriptor), [first, second])
 
+        do {
+            try await ledger.registerRootGeneration(
+                first,
+                bookmark: Data("bookmark-0".utf8)
+            )
+            XCTFail("an old immutable generation must not become active again")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .rootGenerationConflict)
+        }
+
         let skippedGeneration = try RootGenerationDescriptor(
             id: "desktop-g3",
             logicalRootID: "desktop",
@@ -301,6 +311,7 @@ final class EncryptedOperationLedgerTests: XCTestCase {
 
         try await ledger.updateRootBindingStatus(
             logicalRootID: "desktop",
+            expectedActiveRootID: second.id,
             status: .needsReauthorization
         )
         let held = try await ledger.rootBinding(logicalRootID: "desktop")

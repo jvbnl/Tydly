@@ -79,6 +79,25 @@ public struct RootBindingRecord: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct RootGenerationRegistration: Sendable {
+    public let descriptor: RootGenerationDescriptor
+    public let bookmark: Data
+    public let bookmarkVersion: Int
+    public let status: RootBindingStatus
+
+    public init(
+        descriptor: RootGenerationDescriptor,
+        bookmark: Data,
+        bookmarkVersion: Int = 1,
+        status: RootBindingStatus = .active
+    ) {
+        self.descriptor = descriptor
+        self.bookmark = bookmark
+        self.bookmarkVersion = bookmarkVersion
+        self.status = status
+    }
+}
+
 /// Single-writer encrypted source of truth for move intent and recovery. This target owns no
 /// filesystem mutation API: an engine must commit `prepared`, perform one validated action,
 /// then compare-and-swap the operation to `applied` and `committed`.
@@ -153,20 +172,67 @@ public actor EncryptedOperationLedger {
         status: RootBindingStatus = .active,
         at date: Date = Date()
     ) throws {
-        guard !bookmark.isEmpty else {
+        try registerRootGenerations(
+            [
+                RootGenerationRegistration(
+                    descriptor: descriptor,
+                    bookmark: bookmark,
+                    bookmarkVersion: bookmarkVersion,
+                    status: status
+                )
+            ],
+            at: date
+        )
+    }
+
+    public func registerRootGenerations(
+        _ registrations: [RootGenerationRegistration],
+        at date: Date = Date()
+    ) throws {
+        guard !registrations.isEmpty,
+              registrations.allSatisfy({ !$0.bookmark.isEmpty }),
+              Set(registrations.map(\.descriptor.id)).count == registrations.count else {
             throw LedgerValidationError.emptyIdentifier
         }
+
         try database.write { db in
-            if let existing = try Row.fetchOne(
+            for registration in registrations.sorted(by: {
+                if $0.descriptor.logicalRootID == $1.descriptor.logicalRootID {
+                    return $0.descriptor.generation < $1.descriptor.generation
+                }
+                return $0.descriptor.logicalRootID < $1.descriptor.logicalRootID
+            }) {
+                try Self.registerRootGeneration(registration, in: db, at: date)
+            }
+        }
+    }
+
+    private static func registerRootGeneration(
+        _ registration: RootGenerationRegistration,
+        in db: Database,
+        at date: Date
+    ) throws {
+        let descriptor = registration.descriptor
+        if let existing = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM roots WHERE id = ?",
                 arguments: [descriptor.id]
             ) {
                 let record = try Self.decodeRoot(existing)
                 guard record.descriptor == descriptor,
-                      record.bookmark == bookmark,
-                      record.bookmarkVersion == bookmarkVersion else {
+                      record.bookmark == registration.bookmark,
+                      record.bookmarkVersion == registration.bookmarkVersion else {
                     throw LedgerStoreError.rootMutationRejected
+                }
+                if let activeRootID = try String.fetchOne(
+                    db,
+                    sql: """
+                        SELECT activeRootID FROM rootBindings
+                        WHERE logicalRootID = ?
+                        """,
+                    arguments: [descriptor.logicalRootID]
+                ), activeRootID != descriptor.id {
+                    throw LedgerStoreError.rootGenerationConflict
                 }
             } else {
                 let maximumGeneration = try Int.fetchOne(
@@ -187,8 +253,8 @@ public actor EncryptedOperationLedger {
                         """,
                     arguments: [
                         descriptor.id,
-                        bookmark,
-                        bookmarkVersion,
+                        registration.bookmark,
+                        registration.bookmarkVersion,
                         descriptor.logicalRootID,
                         descriptor.generation,
                         descriptor.purpose.rawValue,
@@ -199,8 +265,8 @@ public actor EncryptedOperationLedger {
                         date.timeIntervalSince1970
                     ]
                 )
-            }
-            if let binding = try Row.fetchOne(
+        }
+        if let binding = try Row.fetchOne(
                 db,
                 sql: "SELECT purpose FROM rootBindings WHERE logicalRootID = ?",
                 arguments: [descriptor.logicalRootID]
@@ -209,8 +275,8 @@ public actor EncryptedOperationLedger {
                 guard purposeRaw == descriptor.purpose.rawValue else {
                     throw LedgerStoreError.rootBindingMismatch
                 }
-            }
-            try db.execute(
+        }
+        try db.execute(
                 sql: """
                     INSERT INTO rootBindings (
                         logicalRootID, activeRootID, purpose, status, updatedAt
@@ -225,15 +291,15 @@ public actor EncryptedOperationLedger {
                     descriptor.logicalRootID,
                     descriptor.id,
                     descriptor.purpose.rawValue,
-                    status.rawValue,
+                    registration.status.rawValue,
                     date.timeIntervalSince1970
                 ]
-            )
-        }
+        )
     }
 
     public func updateRootBindingStatus(
         logicalRootID: String,
+        expectedActiveRootID: String,
         status: RootBindingStatus,
         at date: Date = Date()
     ) throws {
@@ -241,9 +307,14 @@ public actor EncryptedOperationLedger {
             try db.execute(
                 sql: """
                     UPDATE rootBindings SET status = ?, updatedAt = ?
-                    WHERE logicalRootID = ?
+                    WHERE logicalRootID = ? AND activeRootID = ?
                     """,
-                arguments: [status.rawValue, date.timeIntervalSince1970, logicalRootID]
+                arguments: [
+                    status.rawValue,
+                    date.timeIntervalSince1970,
+                    logicalRootID,
+                    expectedActiveRootID
+                ]
             )
             guard db.changesCount == 1 else {
                 throw LedgerStoreError.rootGenerationNotFound
@@ -892,7 +963,7 @@ public actor EncryptedOperationLedger {
                 INSERT INTO rootBindings (
                     logicalRootID, activeRootID, purpose, status, updatedAt
                 )
-                SELECT logicalRootID, id, purpose, 'active', updatedAt
+                SELECT logicalRootID, id, purpose, 'needsReauthorization', updatedAt
                 FROM roots;
                 """)
         }
@@ -1282,6 +1353,14 @@ public actor EncryptedOperationLedger {
                 guard let root = rootsByID[binding.activeRootID],
                       root.descriptor.logicalRootID == binding.id,
                       root.descriptor.purpose == binding.purpose else {
+                    throw LedgerStoreError.integrityCheckFailed
+                }
+                let maximumGeneration = roots
+                    .filter { $0.descriptor.logicalRootID == binding.id }
+                    .map(\.descriptor.generation)
+                    .max()
+                guard let maximumGeneration,
+                      root.descriptor.generation == maximumGeneration else {
                     throw LedgerStoreError.integrityCheckFailed
                 }
             }

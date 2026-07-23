@@ -15,7 +15,8 @@ final class RootCapabilityStoreTests: XCTestCase {
             isPackage: false,
             isLocalVolume: true,
             isReadOnlyVolume: false,
-            isProviderBacked: false
+            isProviderBacked: false,
+            isVolumeRoot: false
         )
         let safeContext = RootPolicyContext(
             matchesRequiredFolder: true,
@@ -61,6 +62,11 @@ final class RootCapabilityStoreTests: XCTestCase {
                 replacing(safe, isProviderBacked: true),
                 safeContext,
                 .providerBacked
+            ),
+            (
+                replacing(safe, isVolumeRoot: true),
+                safeContext,
+                .broadRoot
             ),
             (
                 safe,
@@ -111,8 +117,7 @@ final class RootCapabilityStoreTests: XCTestCase {
         let descriptor = try await fixture.store.registerPanelSelection(
             logicalRootID: "source.desktop",
             purpose: .sourceDesktop,
-            selectedURL: fixture.desktop,
-            requiredURL: fixture.desktop
+            selectedURL: fixture.desktop
         )
         let binding = try await fixture.ledger.rootBinding(logicalRootID: "source.desktop")
         let active = try await fixture.ledger.activeRoot(logicalRootID: "source.desktop")
@@ -125,6 +130,48 @@ final class RootCapabilityStoreTests: XCTestCase {
         try await fixture.ledger.close()
     }
 
+    func testMultiFolderSelectionCommitsAtomically() async throws {
+        let fixture = try CapabilityFixture()
+        defer { fixture.remove() }
+
+        do {
+            _ = try await fixture.store.registerPanelSelections([
+                RootPanelSelection(
+                    logicalRootID: "source.desktop",
+                    purpose: .sourceDesktop,
+                    url: fixture.desktop
+                ),
+                RootPanelSelection(
+                    logicalRootID: "source.downloads",
+                    purpose: .sourceDownloads,
+                    url: fixture.desktop
+                )
+            ])
+            XCTFail("invalid second selection must commit neither bookmark")
+        } catch {
+            XCTAssertEqual(error as? RootCapabilityError, .wrongRequiredFolder)
+        }
+        let bindingsAfterFailure = try await fixture.ledger.rootBindings()
+        XCTAssertTrue(bindingsAfterFailure.isEmpty)
+
+        let descriptors = try await fixture.store.registerPanelSelections([
+            RootPanelSelection(
+                logicalRootID: "source.desktop",
+                purpose: .sourceDesktop,
+                url: fixture.desktop
+            ),
+            RootPanelSelection(
+                logicalRootID: "source.downloads",
+                purpose: .sourceDownloads,
+                url: fixture.downloads
+            )
+        ])
+        XCTAssertEqual(descriptors.count, 2)
+        let bindings = try await fixture.ledger.rootBindings()
+        XCTAssertEqual(Set(bindings.map(\.id)), Set(["source.desktop", "source.downloads"]))
+        try await fixture.ledger.close()
+    }
+
     func testStaleBookmarkRefreshesOnlyAfterIdentityMatches() async throws {
         let fixture = try CapabilityFixture()
         defer { fixture.remove() }
@@ -132,16 +179,17 @@ final class RootCapabilityStoreTests: XCTestCase {
         let first = try await fixture.store.registerPanelSelection(
             logicalRootID: "source.desktop",
             purpose: .sourceDesktop,
-            selectedURL: fixture.desktop,
-            requiredURL: fixture.desktop
+            selectedURL: fixture.desktop
         )
         fixture.bookmarks.markLatestStale(for: fixture.desktop)
 
-        let lease = try await fixture.store.resolve(logicalRootID: "source.desktop")
-        XCTAssertEqual(lease.descriptor.generation, 1)
-        XCTAssertEqual(lease.descriptor.identity, first.identity)
-        lease.close()
-        lease.close()
+        let resolved = try await fixture.store.withResolvedRoot(
+            logicalRootID: "source.desktop"
+        ) { _, descriptor in
+            descriptor
+        }
+        XCTAssertEqual(resolved.generation, 1)
+        XCTAssertEqual(resolved.identity, first.identity)
 
         let generations = try await fixture.ledger.rootGenerations(
             logicalRootID: "source.desktop"
@@ -152,6 +200,32 @@ final class RootCapabilityStoreTests: XCTestCase {
         try await fixture.ledger.close()
     }
 
+    func testExactGenerationResolutionInvalidatesStaleMovePlan() async throws {
+        let fixture = try CapabilityFixture()
+        defer { fixture.remove() }
+
+        let first = try await fixture.store.registerPanelSelection(
+            logicalRootID: "source.desktop",
+            purpose: .sourceDesktop,
+            selectedURL: fixture.desktop
+        )
+        fixture.bookmarks.markLatestStale(for: fixture.desktop)
+
+        do {
+            _ = try await fixture.store.withResolvedRootGeneration(
+                rootGenerationID: first.id
+            ) { _, _ in () }
+            XCTFail("a stale exact generation must force plan regeneration")
+        } catch {
+            XCTAssertEqual(error as? RootCapabilityError, .generationChanged)
+        }
+        let binding = try await fixture.ledger.rootBinding(logicalRootID: "source.desktop")
+        let active = try await fixture.ledger.activeRoot(logicalRootID: "source.desktop")
+        XCTAssertNotEqual(binding?.activeRootID, first.id)
+        XCTAssertEqual(active?.descriptor.generation, 1)
+        try await fixture.ledger.close()
+    }
+
     func testChangedIdentityRequiresExplicitReauthorization() async throws {
         let fixture = try CapabilityFixture()
         defer { fixture.remove() }
@@ -159,8 +233,7 @@ final class RootCapabilityStoreTests: XCTestCase {
         _ = try await fixture.store.registerPanelSelection(
             logicalRootID: "source.desktop",
             purpose: .sourceDesktop,
-            selectedURL: fixture.desktop,
-            requiredURL: fixture.desktop
+            selectedURL: fixture.desktop
         )
         fixture.inspector.setInspection(
             for: fixture.desktop,
@@ -168,7 +241,9 @@ final class RootCapabilityStoreTests: XCTestCase {
         )
 
         do {
-            _ = try await fixture.store.resolve(logicalRootID: "source.desktop")
+            _ = try await fixture.store.withResolvedRoot(
+                logicalRootID: "source.desktop"
+            ) { _, _ in () }
             XCTFail("changed root identity must never silently retarget history")
         } catch {
             XCTAssertEqual(error as? RootCapabilityError, .identityChanged)
@@ -186,8 +261,7 @@ final class RootCapabilityStoreTests: XCTestCase {
         _ = try await fixture.store.registerPanelSelection(
             logicalRootID: "source.desktop",
             purpose: .sourceDesktop,
-            selectedURL: fixture.desktop,
-            requiredURL: fixture.desktop
+            selectedURL: fixture.desktop
         )
         let nested = fixture.desktop.appendingPathComponent("Nested", isDirectory: true)
         fixture.inspector.setInspection(
@@ -215,7 +289,8 @@ final class RootCapabilityStoreTests: XCTestCase {
         isPackage: Bool? = nil,
         isLocalVolume: Bool? = nil,
         isReadOnlyVolume: Bool? = nil,
-        isProviderBacked: Bool? = nil
+        isProviderBacked: Bool? = nil,
+        isVolumeRoot: Bool? = nil
     ) -> RootInspection {
         RootInspection(
             displayName: value.displayName,
@@ -225,7 +300,8 @@ final class RootCapabilityStoreTests: XCTestCase {
             isPackage: isPackage ?? value.isPackage,
             isLocalVolume: isLocalVolume ?? value.isLocalVolume,
             isReadOnlyVolume: isReadOnlyVolume ?? value.isReadOnlyVolume,
-            isProviderBacked: isProviderBacked ?? value.isProviderBacked
+            isProviderBacked: isProviderBacked ?? value.isProviderBacked,
+            isVolumeRoot: isVolumeRoot ?? value.isVolumeRoot
         )
     }
 }
@@ -233,6 +309,7 @@ final class RootCapabilityStoreTests: XCTestCase {
 private final class CapabilityFixture {
     let directory: URL
     let desktop: URL
+    let downloads: URL
     let ledger: EncryptedOperationLedger
     let bookmarks = FakeBookmarkCodec()
     let inspector = FakeRootInspector()
@@ -243,8 +320,13 @@ private final class CapabilityFixture {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TydlyCapabilityTests-\(UUID().uuidString)", isDirectory: true)
         desktop = directory.appendingPathComponent("Desktop", isDirectory: true)
+        downloads = directory.appendingPathComponent("Downloads", isDirectory: true)
         try FileManager.default.createDirectory(
             at: desktop,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: downloads,
             withIntermediateDirectories: true
         )
         ledger = try EncryptedOperationLedger(
@@ -255,12 +337,20 @@ private final class CapabilityFixture {
             for: desktop,
             identity: try RootResourceIdentity(volumeID: "volume", fileID: "desktop")
         )
+        inspector.setInspection(
+            for: downloads,
+            identity: try RootResourceIdentity(volumeID: "volume", fileID: "downloads")
+        )
         let uuidSequence = UUIDSequence()
         store = RootCapabilityStore(
             ledger: ledger,
             bookmarkCodec: bookmarks,
             inspector: inspector,
             scopeAccessor: scopes,
+            trustedRoots: FakeTrustedRootLocator(
+                desktop: desktop,
+                downloads: downloads
+            ),
             makeUUID: { uuidSequence.next() }
         )
     }
@@ -337,7 +427,8 @@ private final class FakeRootInspector: RootResourceInspecting, @unchecked Sendab
                 isPackage: false,
                 isLocalVolume: true,
                 isReadOnlyVolume: false,
-                isProviderBacked: false
+                isProviderBacked: false,
+                isVolumeRoot: false
             )
         }
     }
@@ -359,6 +450,26 @@ private final class FakeScopeAccessor: SecurityScopeAccessing, @unchecked Sendab
         lock.lock()
         defer { lock.unlock() }
         stopCount += 1
+    }
+}
+
+private struct FakeTrustedRootLocator: TrustedRootLocating {
+    let desktop: URL
+    let downloads: URL
+
+    func requiredURL(for purpose: RootPurpose) -> URL? {
+        switch purpose {
+        case .sourceDesktop: return desktop
+        case .sourceDownloads: return downloads
+        case .destination, .legacy: return nil
+        }
+    }
+
+    var forbiddenBroadRoots: [URL] {
+        [
+            URL(fileURLWithPath: "/", isDirectory: true),
+            FileManager.default.homeDirectoryForCurrentUser
+        ]
     }
 }
 

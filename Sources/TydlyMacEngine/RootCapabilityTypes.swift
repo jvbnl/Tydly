@@ -19,6 +19,9 @@ public enum RootCapabilityError: Error, Equatable, Sendable {
     case identityChanged
     case bindingUnavailable
     case needsReauthorization
+    case operationInProgress
+    case duplicateSelection
+    case generationChanged
 }
 
 public struct RootInspection: Equatable, Sendable {
@@ -30,6 +33,7 @@ public struct RootInspection: Equatable, Sendable {
     public let isLocalVolume: Bool
     public let isReadOnlyVolume: Bool
     public let isProviderBacked: Bool
+    public let isVolumeRoot: Bool
 
     public init(
         displayName: String,
@@ -39,7 +43,8 @@ public struct RootInspection: Equatable, Sendable {
         isPackage: Bool,
         isLocalVolume: Bool,
         isReadOnlyVolume: Bool,
-        isProviderBacked: Bool
+        isProviderBacked: Bool,
+        isVolumeRoot: Bool
     ) {
         self.displayName = displayName
         self.identity = identity
@@ -49,6 +54,7 @@ public struct RootInspection: Equatable, Sendable {
         self.isLocalVolume = isLocalVolume
         self.isReadOnlyVolume = isReadOnlyVolume
         self.isProviderBacked = isProviderBacked
+        self.isVolumeRoot = isVolumeRoot
     }
 }
 
@@ -80,6 +86,11 @@ public protocol SecurityScopeAccessing: Sendable {
     func stopAccessing(_ url: URL)
 }
 
+public protocol TrustedRootLocating: Sendable {
+    func requiredURL(for purpose: RootPurpose) -> URL?
+    var forbiddenBroadRoots: [URL] { get }
+}
+
 public struct RootPolicyContext: Equatable, Sendable {
     public let matchesRequiredFolder: Bool
     public let isHomeOrFilesystemRoot: Bool
@@ -96,6 +107,18 @@ public struct RootPolicyContext: Equatable, Sendable {
     }
 }
 
+public struct RootPanelSelection: Sendable {
+    public let logicalRootID: String
+    public let purpose: RootPurpose
+    public let url: URL
+
+    public init(logicalRootID: String, purpose: RootPurpose, url: URL) {
+        self.logicalRootID = logicalRootID
+        self.purpose = purpose
+        self.url = url
+    }
+}
+
 public enum RootSelectionPolicy {
     public static func validate(
         inspection: RootInspection,
@@ -108,7 +131,9 @@ public enum RootSelectionPolicy {
         guard inspection.isLocalVolume else { throw RootCapabilityError.nonLocalVolume }
         guard !inspection.isReadOnlyVolume else { throw RootCapabilityError.readOnlyVolume }
         guard !inspection.isProviderBacked else { throw RootCapabilityError.providerBacked }
-        guard !context.isHomeOrFilesystemRoot else { throw RootCapabilityError.broadRoot }
+        guard !context.isHomeOrFilesystemRoot, !inspection.isVolumeRoot else {
+            throw RootCapabilityError.broadRoot
+        }
         if purpose == .sourceDesktop || purpose == .sourceDownloads {
             guard context.matchesRequiredFolder else {
                 throw RootCapabilityError.wrongRequiredFolder
@@ -120,9 +145,9 @@ public enum RootSelectionPolicy {
     }
 }
 
-public final class SecurityScopedRootLease: @unchecked Sendable {
-    public let url: URL
-    public let descriptor: RootGenerationDescriptor
+package final class SecurityScopedRootLease: @unchecked Sendable {
+    package let url: URL
+    package let descriptor: RootGenerationDescriptor
 
     private let accessor: any SecurityScopeAccessing
     private let lock = NSLock()
@@ -138,7 +163,7 @@ public final class SecurityScopedRootLease: @unchecked Sendable {
         self.accessor = accessor
     }
 
-    public func close() {
+    package func close() {
         lock.lock()
         defer { lock.unlock() }
         guard isActive else { return }

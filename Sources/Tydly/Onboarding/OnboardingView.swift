@@ -18,8 +18,14 @@ struct OnboardingView: View {
     @State private var colorIndex = 0
     @State private var isAuthorizingFolders = false
     @State private var folderAuthorizationError: String?
+    @State private var folderAuthorizationTask: Task<Void, Never>?
 
     private let stepCount = 3
+
+    init(startAtFolderScope: Bool = false, onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+        _step = State(initialValue: startAtFolderScope ? 1 : 0)
+    }
 
     var body: some View {
         VStack(spacing: 7) {
@@ -60,6 +66,11 @@ struct OnboardingView: View {
         )
         .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 14)
         .padding(24) // transparent breathing room inside the clear window (shadow shows here)
+        .onDisappear {
+            folderAuthorizationTask?.cancel()
+            folderAuthorizationTask = nil
+            isAuthorizingFolders = false
+        }
     }
 
     private func advance() {
@@ -81,7 +92,7 @@ struct OnboardingView: View {
         isAuthorizingFolders = true
         folderAuthorizationError = nil
 
-        Task {
+        folderAuthorizationTask = Task {
             let result = await model.authorizeOnboardingFolders(
                 desktopRequest: RootAuthorizationRequest(
                     message: L.onboarding_select_desktop_message,
@@ -100,10 +111,16 @@ struct OnboardingView: View {
                     ).first
                 )
             )
+            guard !Task.isCancelled else { return }
             isAuthorizingFolders = false
+            folderAuthorizationTask = nil
             switch result {
             case .success:
-                advance()
+                if model.hasCompletedOnboarding {
+                    onFinish()
+                } else {
+                    advance()
+                }
             case .cancelled:
                 break
             case .failed:

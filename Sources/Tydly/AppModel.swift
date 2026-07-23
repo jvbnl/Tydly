@@ -153,31 +153,52 @@ final class AppModel: ObservableObject {
             let store = try capabilityStore()
             let panel = RootAuthorizationPanel()
             let desktop = try panel.selectDirectory(desktopRequest)
-            _ = try await store.registerPanelSelection(
-                logicalRootID: "source.desktop",
-                purpose: .sourceDesktop,
-                selectedURL: desktop,
-                requiredURL: FileManager.default.urls(
-                    for: .desktopDirectory,
-                    in: .userDomainMask
-                ).first
-            )
-
-            let downloads = try panel.selectDirectory(downloadsRequest)
-            _ = try await store.registerPanelSelection(
-                logicalRootID: "source.downloads",
-                purpose: .sourceDownloads,
-                selectedURL: downloads,
-                requiredURL: FileManager.default.urls(
-                    for: .downloadsDirectory,
-                    in: .userDomainMask
-                ).first
-            )
+            if Task.isCancelled {
+                desktop.stopAccessingSecurityScopedResource()
+                throw CancellationError()
+            }
+            let downloads: URL
+            do {
+                downloads = try panel.selectDirectory(downloadsRequest)
+            } catch {
+                desktop.stopAccessingSecurityScopedResource()
+                throw error
+            }
+            if Task.isCancelled {
+                desktop.stopAccessingSecurityScopedResource()
+                downloads.stopAccessingSecurityScopedResource()
+                throw CancellationError()
+            }
+            _ = try await store.registerPanelSelections([
+                RootPanelSelection(
+                    logicalRootID: "source.desktop",
+                    purpose: .sourceDesktop,
+                    url: desktop
+                ),
+                RootPanelSelection(
+                    logicalRootID: "source.downloads",
+                    purpose: .sourceDownloads,
+                    url: downloads
+                )
+            ])
             return .success
         } catch RootCapabilityError.selectionCancelled {
             return .cancelled
+        } catch is CancellationError {
+            return .cancelled
         } catch {
             return .failed
+        }
+    }
+
+    func hasRequiredFolderCapabilities() async -> Bool {
+        do {
+            return try await capabilityStore().hasActiveBindings([
+                "source.desktop",
+                "source.downloads"
+            ])
+        } catch {
+            return false
         }
     }
 

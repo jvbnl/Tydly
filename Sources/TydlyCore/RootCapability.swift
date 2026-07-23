@@ -31,6 +31,19 @@ public struct RootResourceIdentity: Codable, Equatable, Sendable {
         self.volumeID = volumeID
         self.fileID = fileID
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case volumeID
+        case fileID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            volumeID: values.decode(String.self, forKey: .volumeID),
+            fileID: values.decode(String.self, forKey: .fileID)
+        )
+    }
 }
 
 /// Immutable metadata for one bookmark generation. Refreshing a stale bookmark creates a
@@ -63,5 +76,26 @@ public struct RootGenerationDescriptor: Identifiable, Codable, Equatable, Sendab
         self.purpose = purpose
         self.displayName = displayName
         self.identity = identity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case logicalRootID
+        case generation
+        case purpose
+        case displayName
+        case identity
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            id: values.decode(String.self, forKey: .id),
+            logicalRootID: values.decode(String.self, forKey: .logicalRootID),
+            generation: values.decode(Int.self, forKey: .generation),
+            purpose: values.decode(RootPurpose.self, forKey: .purpose),
+            displayName: values.decode(String.self, forKey: .displayName),
+            identity: values.decode(RootResourceIdentity.self, forKey: .identity)
+        )
     }
 }
