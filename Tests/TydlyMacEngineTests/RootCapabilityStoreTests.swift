@@ -172,6 +172,102 @@ final class RootCapabilityStoreTests: XCTestCase {
         try await fixture.ledger.close()
     }
 
+    func testPowerboxSelectionReplacesUnreferencedLegacyBindings() async throws {
+        let fixture = try CapabilityFixture()
+        defer { fixture.remove() }
+        try await fixture.ledger.registerRoot(
+            id: "legacy-root",
+            bookmark: Data("legacy".utf8)
+        )
+
+        _ = try await fixture.store.registerPanelSelections([
+            RootPanelSelection(
+                logicalRootID: "source.desktop",
+                purpose: .sourceDesktop,
+                url: fixture.desktop
+            ),
+            RootPanelSelection(
+                logicalRootID: "source.downloads",
+                purpose: .sourceDownloads,
+                url: fixture.downloads
+            )
+        ])
+
+        let bindings = try await fixture.ledger.rootBindings()
+        XCTAssertEqual(
+            Set(bindings.map(\.id)),
+            Set(["source.desktop", "source.downloads"])
+        )
+        let legacyRoot = try await fixture.ledger.root(id: "legacy-root")
+        XCTAssertNil(legacyRoot)
+        try await fixture.ledger.close()
+    }
+
+    func testCancellationBeforeCommitStoresNoCapabilities() async throws {
+        let fixture = try CapabilityFixture()
+        defer { fixture.remove() }
+        fixture.inspector.setInspectionDelay(nanoseconds: 200_000_000)
+
+        let task = Task {
+            try await fixture.store.registerPanelSelections([
+                RootPanelSelection(
+                    logicalRootID: "source.desktop",
+                    purpose: .sourceDesktop,
+                    url: fixture.desktop
+                ),
+                RootPanelSelection(
+                    logicalRootID: "source.downloads",
+                    purpose: .sourceDownloads,
+                    url: fixture.downloads
+                )
+            ])
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("cancelled authorization must not commit")
+        } catch is CancellationError {
+            // expected
+        }
+        let bindings = try await fixture.ledger.rootBindings()
+        XCTAssertTrue(bindings.isEmpty)
+        try await fixture.ledger.close()
+    }
+
+    func testRejectedConcurrentSelectionRelinquishesPowerboxScope() async throws {
+        let fixture = try CapabilityFixture()
+        defer { fixture.remove() }
+        fixture.inspector.setInspectionDelay(nanoseconds: 200_000_000)
+
+        let first = Task {
+            try await fixture.store.registerPanelSelection(
+                logicalRootID: "source.desktop",
+                purpose: .sourceDesktop,
+                selectedURL: fixture.desktop
+            )
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        do {
+            _ = try await fixture.store.registerPanelSelection(
+                logicalRootID: "source.downloads",
+                purpose: .sourceDownloads,
+                selectedURL: fixture.downloads
+            )
+            XCTFail("concurrent capability mutation must be rejected")
+        } catch {
+            XCTAssertEqual(error as? RootCapabilityError, .operationInProgress)
+        }
+        XCTAssertEqual(fixture.scopes.stopCount, 1)
+
+        first.cancel()
+        _ = try? await first.value
+        let bindings = try await fixture.ledger.rootBindings()
+        XCTAssertTrue(bindings.isEmpty)
+        try await fixture.ledger.close()
+    }
+
     func testStaleBookmarkRefreshesOnlyAfterIdentityMatches() async throws {
         let fixture = try CapabilityFixture()
         defer { fixture.remove() }
@@ -182,6 +278,7 @@ final class RootCapabilityStoreTests: XCTestCase {
             selectedURL: fixture.desktop
         )
         fixture.bookmarks.markLatestStale(for: fixture.desktop)
+        fixture.scopes.resetCounts()
 
         let resolved = try await fixture.store.withResolvedRoot(
             logicalRootID: "source.desktop"
@@ -223,6 +320,13 @@ final class RootCapabilityStoreTests: XCTestCase {
         let active = try await fixture.ledger.activeRoot(logicalRootID: "source.desktop")
         XCTAssertNotEqual(binding?.activeRootID, first.id)
         XCTAssertEqual(active?.descriptor.generation, 1)
+
+        let recovered = try await fixture.store.withRecordedRootGenerationForRecovery(
+            rootGenerationID: first.id
+        ) { _, descriptor in
+            descriptor
+        }
+        XCTAssertEqual(recovered, first)
         try await fixture.ledger.close()
     }
 
@@ -239,6 +343,7 @@ final class RootCapabilityStoreTests: XCTestCase {
             for: fixture.desktop,
             identity: try RootResourceIdentity(volumeID: "volume", fileID: "replacement")
         )
+        fixture.scopes.resetCounts()
 
         do {
             _ = try await fixture.store.withResolvedRoot(
@@ -396,8 +501,13 @@ private final class FakeBookmarkCodec: SecurityScopedBookmarkCoding, @unchecked 
 private final class FakeRootInspector: RootResourceInspecting, @unchecked Sendable {
     private let queue = DispatchQueue(label: "FakeRootInspector")
     private var inspections: [URL: RootInspection] = [:]
+    private var inspectionDelayNanoseconds: UInt64 = 0
 
     func inspect(_ url: URL) async throws -> RootInspection {
+        let delay = queue.sync { inspectionDelayNanoseconds }
+        if delay > 0 {
+            try await Task.sleep(nanoseconds: delay)
+        }
         try queue.sync {
             guard let inspection = inspections[url] else {
                 throw RootCapabilityError.bindingUnavailable
@@ -432,6 +542,12 @@ private final class FakeRootInspector: RootResourceInspecting, @unchecked Sendab
             )
         }
     }
+
+    func setInspectionDelay(nanoseconds: UInt64) {
+        queue.sync {
+            inspectionDelayNanoseconds = nanoseconds
+        }
+    }
 }
 
 private final class FakeScopeAccessor: SecurityScopeAccessing, @unchecked Sendable {
@@ -450,6 +566,13 @@ private final class FakeScopeAccessor: SecurityScopeAccessing, @unchecked Sendab
         lock.lock()
         defer { lock.unlock() }
         stopCount += 1
+    }
+
+    func resetCounts() {
+        lock.lock()
+        defer { lock.unlock() }
+        startCount = 0
+        stopCount = 0
     }
 }
 

@@ -233,7 +233,6 @@ final class EncryptedOperationLedgerTests: XCTestCase {
 
         let ledger = try fixture.openLedger()
         try await ledger.registerRoot(id: "desktop", bookmark: Data("desktop".utf8))
-        try await ledger.registerRoot(id: "desktop", bookmark: Data("desktop".utf8))
 
         do {
             try await ledger.registerRoot(id: "desktop", bookmark: Data("other".utf8))
@@ -336,6 +335,55 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         XCTAssertEqual(binding?.status, .needsReauthorization)
         XCTAssertEqual(root?.descriptor.purpose, .legacy)
         XCTAssertEqual(root?.descriptor.identity.volumeID, "legacy")
+        try await ledger.close()
+    }
+
+    func testRootSetRevisionRejectsConcurrentValidationSnapshot() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let ledger = try fixture.openLedger()
+        let snapshot = try await ledger.rootBindingSnapshot()
+
+        let desktop = try RootGenerationDescriptor(
+            id: "desktop-g0",
+            logicalRootID: "desktop",
+            generation: 0,
+            purpose: .sourceDesktop,
+            displayName: "Desktop",
+            identity: RootResourceIdentity(volumeID: "volume", fileID: "desktop")
+        )
+        try await ledger.registerRootGenerations(
+            [
+                RootGenerationRegistration(
+                    descriptor: desktop,
+                    bookmark: Data("desktop".utf8)
+                )
+            ],
+            expectedRootSetRevision: snapshot.revision
+        )
+
+        let downloads = try RootGenerationDescriptor(
+            id: "downloads-g0",
+            logicalRootID: "downloads",
+            generation: 0,
+            purpose: .sourceDownloads,
+            displayName: "Downloads",
+            identity: RootResourceIdentity(volumeID: "volume", fileID: "downloads")
+        )
+        do {
+            try await ledger.registerRootGenerations(
+                [
+                    RootGenerationRegistration(
+                        descriptor: downloads,
+                        bookmark: Data("downloads".utf8)
+                    )
+                ],
+                expectedRootSetRevision: snapshot.revision
+            )
+            XCTFail("stale root-set validation must not commit")
+        } catch {
+            XCTAssertEqual(error as? LedgerStoreError, .rootBindingConflict)
+        }
         try await ledger.close()
     }
 

@@ -22,6 +22,7 @@ public enum LedgerStoreError: Error, Equatable, Sendable {
     case rootGenerationNotFound
     case rootBindingMismatch
     case rootGenerationConflict
+    case rootBindingConflict
     case destinationIdentityIsImmutable
     case invalidBatchComposition
     case missingRepairReason
@@ -76,6 +77,16 @@ public struct RootBindingRecord: Identifiable, Equatable, Sendable {
         self.purpose = purpose
         self.status = status
         self.updatedAt = updatedAt
+    }
+}
+
+public struct RootBindingSnapshot: Equatable, Sendable {
+    public let revision: Int
+    public let bindings: [RootBindingRecord]
+
+    public init(revision: Int, bindings: [RootBindingRecord]) {
+        self.revision = revision
+        self.bindings = bindings
     }
 }
 
@@ -142,12 +153,15 @@ public actor EncryptedOperationLedger {
         try database.close()
     }
 
-    public func registerRoot(
+    package func registerRoot(
         id: String,
         bookmark: Data,
         bookmarkVersion: Int = 1,
         at date: Date = Date()
     ) throws {
+        if try root(id: id) != nil {
+            throw LedgerStoreError.rootMutationRejected
+        }
         let descriptor = try RootGenerationDescriptor(
             id: id,
             logicalRootID: id,
@@ -165,7 +179,7 @@ public actor EncryptedOperationLedger {
         )
     }
 
-    public func registerRootGeneration(
+    package func registerRootGeneration(
         _ descriptor: RootGenerationDescriptor,
         bookmark: Data,
         bookmarkVersion: Int = 1,
@@ -185,8 +199,10 @@ public actor EncryptedOperationLedger {
         )
     }
 
-    public func registerRootGenerations(
+    package func registerRootGenerations(
         _ registrations: [RootGenerationRegistration],
+        expectedRootSetRevision: Int? = nil,
+        replacingLegacyBindings: Bool = false,
         at date: Date = Date()
     ) throws {
         guard !registrations.isEmpty,
@@ -196,6 +212,38 @@ public actor EncryptedOperationLedger {
         }
 
         try database.write { db in
+            let currentRevision = try Int.fetchOne(
+                db,
+                sql: "SELECT revision FROM rootSetState WHERE id = 1"
+            ) ?? 0
+            if let expectedRootSetRevision,
+               expectedRootSetRevision != currentRevision {
+                throw LedgerStoreError.rootBindingConflict
+            }
+            if replacingLegacyBindings {
+                let referencedLegacyCount = try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(*)
+                        FROM roots
+                        WHERE purpose = 'legacy'
+                          AND (
+                              EXISTS (
+                                  SELECT 1 FROM operations
+                                  WHERE sourceRootID = roots.id
+                                     OR destinationRootID = roots.id
+                              )
+                          )
+                        """
+                ) ?? 0
+                guard referencedLegacyCount == 0 else {
+                    throw LedgerStoreError.repairRequired
+                }
+                try db.execute(sql: """
+                    DELETE FROM rootBindings WHERE purpose = 'legacy';
+                    DELETE FROM roots WHERE purpose = 'legacy';
+                    """)
+            }
             for registration in registrations.sorted(by: {
                 if $0.descriptor.logicalRootID == $1.descriptor.logicalRootID {
                     return $0.descriptor.generation < $1.descriptor.generation
@@ -204,6 +252,9 @@ public actor EncryptedOperationLedger {
             }) {
                 try Self.registerRootGeneration(registration, in: db, at: date)
             }
+            try db.execute(
+                sql: "UPDATE rootSetState SET revision = revision + 1 WHERE id = 1"
+            )
         }
     }
 
@@ -297,7 +348,7 @@ public actor EncryptedOperationLedger {
         )
     }
 
-    public func updateRootBindingStatus(
+    package func updateRootBindingStatus(
         logicalRootID: String,
         expectedActiveRootID: String,
         status: RootBindingStatus,
@@ -319,6 +370,9 @@ public actor EncryptedOperationLedger {
             guard db.changesCount == 1 else {
                 throw LedgerStoreError.rootGenerationNotFound
             }
+            try db.execute(
+                sql: "UPDATE rootSetState SET revision = revision + 1 WHERE id = 1"
+            )
         }
     }
 
@@ -354,6 +408,20 @@ public actor EncryptedOperationLedger {
                 db,
                 sql: "SELECT * FROM rootBindings ORDER BY logicalRootID"
             ).map(Self.decodeRootBinding)
+        }
+    }
+
+    public func rootBindingSnapshot() throws -> RootBindingSnapshot {
+        try database.read { db in
+            let revision = try Int.fetchOne(
+                db,
+                sql: "SELECT revision FROM rootSetState WHERE id = 1"
+            ) ?? 0
+            let bindings = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM rootBindings ORDER BY logicalRootID"
+            ).map(Self.decodeRootBinding)
+            return RootBindingSnapshot(revision: revision, bindings: bindings)
         }
     }
 
@@ -960,6 +1028,12 @@ public actor EncryptedOperationLedger {
                     updatedAt DOUBLE NOT NULL
                 );
 
+                CREATE TABLE rootSetState (
+                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+                    revision INTEGER NOT NULL CHECK (revision >= 0)
+                );
+                INSERT INTO rootSetState (id, revision) VALUES (1, 0);
+
                 INSERT INTO rootBindings (
                     logicalRootID, activeRootID, purpose, status, updatedAt
                 )
@@ -1346,6 +1420,12 @@ public actor EncryptedOperationLedger {
         try database.read { db in
             let roots = try Row.fetchAll(db, sql: "SELECT * FROM roots")
                 .map(Self.decodeRoot)
+            guard let rootSetRevision = try Int.fetchOne(
+                db,
+                sql: "SELECT revision FROM rootSetState WHERE id = 1"
+            ), rootSetRevision >= 0 else {
+                throw LedgerStoreError.integrityCheckFailed
+            }
             let rootsByID = Dictionary(uniqueKeysWithValues: roots.map { ($0.id, $0) })
             let bindings = try Row.fetchAll(db, sql: "SELECT * FROM rootBindings")
                 .map(Self.decodeRootBinding)

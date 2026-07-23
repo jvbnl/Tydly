@@ -48,32 +48,37 @@ public actor RootCapabilityStore {
     public func registerPanelSelections(
         _ selections: [RootPanelSelection]
     ) async throws -> [RootGenerationDescriptor] {
-        try beginExclusiveOperation()
-        defer { endExclusiveOperation() }
         defer {
             // NSOpenPanel implicitly starts each selected URL.
             for selection in selections {
-                selection.url.stopAccessingSecurityScopedResource()
+                scopeAccessor.stopAccessing(selection.url)
             }
         }
+        try beginExclusiveOperation()
+        defer { endExclusiveOperation() }
 
         guard !selections.isEmpty,
               Set(selections.map(\.logicalRootID)).count == selections.count else {
             throw RootCapabilityError.duplicateSelection
         }
 
+        try Task.checkCancellation()
+        let rootSetSnapshot = try await ledger.rootBindingSnapshot()
         let replacingLogicalIDs = Set(selections.map(\.logicalRootID))
         let existing = try await existingRootsForValidation(
+            bindings: rootSetSnapshot.bindings,
             excluding: replacingLogicalIDs
         )
         defer { existing.forEach { scopeAccessor.stopAccessing($0.url) } }
 
         var inspections: [URL: RootInspection] = [:]
         for selection in selections {
+            try Task.checkCancellation()
             inspections[selection.url] = try await inspector.inspect(selection.url)
         }
 
         for selection in selections {
+            try Task.checkCancellation()
             guard let inspection = inspections[selection.url] else {
                 throw RootCapabilityError.bindingUnavailable
             }
@@ -94,6 +99,7 @@ public actor RootCapabilityStore {
 
         var registrations: [RootGenerationRegistration] = []
         for selection in selections {
+            try Task.checkCancellation()
             guard let inspection = inspections[selection.url] else {
                 throw RootCapabilityError.bindingUnavailable
             }
@@ -124,7 +130,14 @@ public actor RootCapabilityStore {
             )
         }
 
-        try await ledger.registerRootGenerations(registrations)
+        try Task.checkCancellation()
+        try await ledger.registerRootGenerations(
+            registrations,
+            expectedRootSetRevision: rootSetSnapshot.revision,
+            replacingLegacyBindings: rootSetSnapshot.bindings.contains {
+                $0.purpose == .legacy
+            }
+        )
         return registrations.map(\.descriptor)
     }
 
@@ -163,6 +176,23 @@ public actor RootCapabilityStore {
         return try await operation(lease.url, lease.descriptor)
     }
 
+    /// Recovery may need the exact generation recorded by a durable prepared operation even
+    /// after a stale refresh activated a successor. It validates identity and current policy
+    /// but never retargets the operation or changes the active binding.
+    public func withRecordedRootGenerationForRecovery<T: Sendable>(
+        rootGenerationID: String,
+        _ operation: @Sendable (URL, RootGenerationDescriptor) async throws -> T
+    ) async throws -> T {
+        try beginExclusiveOperation()
+        defer { endExclusiveOperation() }
+        guard let root = try await ledger.root(id: rootGenerationID) else {
+            throw RootCapabilityError.bindingUnavailable
+        }
+        let lease = try await resolveRecordedLease(root)
+        defer { lease.close() }
+        return try await operation(lease.url, lease.descriptor)
+    }
+
     public func hasActiveBindings(_ logicalRootIDs: Set<String>) async throws -> Bool {
         let bindings = try await ledger.rootBindings()
         let active = Set(
@@ -189,8 +219,10 @@ public actor RootCapabilityStore {
         logicalRootID: String,
         expectedRootGenerationID: String?
     ) async throws -> SecurityScopedRootLease {
-        guard let binding = try await ledger.rootBinding(logicalRootID: logicalRootID),
-              let root = try await ledger.activeRoot(logicalRootID: logicalRootID) else {
+        let rootSetSnapshot = try await ledger.rootBindingSnapshot()
+        guard let binding = rootSetSnapshot.bindings.first(where: { $0.id == logicalRootID }),
+              let root = try await ledger.activeRoot(logicalRootID: logicalRootID),
+              root.id == binding.activeRootID else {
             throw RootCapabilityError.bindingUnavailable
         }
         guard binding.status == .active else {
@@ -221,6 +253,7 @@ public actor RootCapabilityStore {
         let existing: [ExistingValidationRoot]
         do {
             existing = try await existingRootsForValidation(
+                bindings: rootSetSnapshot.bindings,
                 excluding: [logicalRootID]
             )
         } catch {
@@ -256,10 +289,15 @@ public actor RootCapabilityStore {
                     displayName: inspection.displayName,
                     identity: inspection.identity
                 )
-                try await ledger.registerRootGeneration(
-                    descriptor,
-                    bookmark: refreshedBookmark,
-                    status: .active
+                try await ledger.registerRootGenerations(
+                    [
+                        RootGenerationRegistration(
+                            descriptor: descriptor,
+                            bookmark: refreshedBookmark,
+                            status: .active
+                        )
+                    ],
+                    expectedRootSetRevision: rootSetSnapshot.revision
                 )
                 if expectedRootGenerationID != nil {
                     throw RootCapabilityError.generationChanged
@@ -284,15 +322,68 @@ public actor RootCapabilityStore {
         )
     }
 
+    private func resolveRecordedLease(
+        _ root: LedgerRootRecord
+    ) async throws -> SecurityScopedRootLease {
+        let resolution: BookmarkResolution
+        do {
+            resolution = try bookmarkCodec.resolveBookmark(root.bookmark)
+        } catch {
+            throw RootCapabilityError.bookmarkResolutionFailed
+        }
+        guard scopeAccessor.startAccessing(resolution.url) else {
+            throw RootCapabilityError.accessDenied
+        }
+
+        do {
+            let snapshot = try await ledger.rootBindingSnapshot()
+            let existing = try await existingRootsForValidation(
+                bindings: snapshot.bindings,
+                excluding: [root.descriptor.logicalRootID]
+            )
+            defer { existing.forEach { scopeAccessor.stopAccessing($0.url) } }
+            let inspection = try await inspector.inspect(resolution.url)
+            let context = try policyContext(
+                selectedURL: resolution.url,
+                purpose: root.descriptor.purpose,
+                otherRootURLs: existing.map(\.url)
+            )
+            try RootSelectionPolicy.validate(
+                inspection: inspection,
+                purpose: root.descriptor.purpose,
+                context: context
+            )
+            guard inspection.identity == root.descriptor.identity else {
+                throw RootCapabilityError.identityChanged
+            }
+        } catch {
+            scopeAccessor.stopAccessing(resolution.url)
+            if let capabilityError = error as? RootCapabilityError {
+                throw capabilityError
+            }
+            throw RootCapabilityError.bookmarkResolutionFailed
+        }
+
+        return SecurityScopedRootLease(
+            url: resolution.url,
+            descriptor: root.descriptor,
+            accessor: scopeAccessor
+        )
+    }
+
     private func existingRootsForValidation(
+        bindings: [RootBindingRecord],
         excluding logicalRootIDs: Set<String>
     ) async throws -> [ExistingValidationRoot] {
         var result: [ExistingValidationRoot] = []
         do {
-            for binding in try await ledger.rootBindings()
-                where !logicalRootIDs.contains(binding.id) {
+            for binding in bindings where !logicalRootIDs.contains(binding.id) {
+                if binding.purpose == .legacy {
+                    continue
+                }
                 guard binding.status == .active,
-                      let root = try await ledger.activeRoot(logicalRootID: binding.id) else {
+                      let root = try await ledger.activeRoot(logicalRootID: binding.id),
+                      root.id == binding.activeRootID else {
                     throw RootCapabilityError.existingRootUnavailable
                 }
                 let resolution: BookmarkResolution
