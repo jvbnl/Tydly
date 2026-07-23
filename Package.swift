@@ -105,7 +105,11 @@ let package = Package(
         ),
         .testTarget(
             name: "TydlyPersistenceTests",
-            dependencies: ["TydlyPersistence", "TydlyCore"]
+            dependencies: [
+                "TydlyPersistence",
+                "TydlyCore",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ]
         ),
         .testTarget(
             name: "TydlyMacEngineTests",

@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import XCTest
 import TydlyCore
 @testable import TydlyPersistence
@@ -319,6 +320,25 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         try await ledger.close()
     }
 
+    func testPopulatedV1RootMigratesToExplicitReauthorization() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        try createLegacyV1Database(
+            at: fixture.databaseURL,
+            keyStore: fixture.keyStore
+        )
+
+        let ledger = try fixture.openLedger()
+        let binding = try await ledger.rootBinding(logicalRootID: "legacy-root")
+        let root = try await ledger.activeRoot(logicalRootID: "legacy-root")
+        let schemaVersion = try await ledger.schemaVersion()
+        XCTAssertEqual(schemaVersion, 2)
+        XCTAssertEqual(binding?.status, .needsReauthorization)
+        XCTAssertEqual(root?.descriptor.purpose, .legacy)
+        XCTAssertEqual(root?.descriptor.identity.volumeID, "legacy")
+        try await ledger.close()
+    }
+
     func testDestinationIdentityCanOnlyBeWrittenOnAppliedTransition() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -531,6 +551,74 @@ final class EncryptedOperationLedgerTests: XCTestCase {
         try await backup.close()
         try await ledger.close()
     }
+}
+
+private func createLegacyV1Database(
+    at url: URL,
+    keyStore: any DatabaseKeyStore
+) throws {
+    guard let key = try keyStore.loadExistingKey() else {
+        throw LedgerStoreError.encryptionKeyUnavailable
+    }
+    var configuration = Configuration()
+    configuration.foreignKeysEnabled = true
+    configuration.prepareDatabase { db in
+        try db.usePassphrase(key)
+        _ = try db.cipherVersion
+    }
+    let database = try DatabaseQueue(path: url.path, configuration: configuration)
+    try database.write { db in
+        try db.execute(sql: """
+            CREATE TABLE roots (
+                id TEXT PRIMARY KEY NOT NULL,
+                bookmark BLOB NOT NULL,
+                bookmarkVersion INTEGER NOT NULL,
+                createdAt DOUBLE NOT NULL,
+                updatedAt DOUBLE NOT NULL
+            );
+            CREATE TABLE batches (
+                id TEXT PRIMARY KEY NOT NULL,
+                status TEXT NOT NULL,
+                createdAt DOUBLE NOT NULL,
+                updatedAt DOUBLE NOT NULL
+            );
+            CREATE TABLE operations (
+                id TEXT PRIMARY KEY NOT NULL,
+                batchID TEXT NOT NULL REFERENCES batches(id),
+                ordinal INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                sourceRootID TEXT NOT NULL REFERENCES roots(id),
+                sourceRelativePath TEXT NOT NULL,
+                destinationRootID TEXT NOT NULL REFERENCES roots(id),
+                destinationRelativePath TEXT NOT NULL,
+                expectedSourceIdentity BLOB NOT NULL,
+                observedDestinationIdentity BLOB,
+                reversesOperationID TEXT REFERENCES operations(id),
+                authorization BLOB NOT NULL,
+                phase TEXT NOT NULL,
+                repairReason TEXT,
+                createdAt DOUBLE NOT NULL,
+                updatedAt DOUBLE NOT NULL
+            );
+            CREATE TABLE operationEvents (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                operationID TEXT NOT NULL REFERENCES operations(id),
+                phase TEXT NOT NULL,
+                timestamp DOUBLE NOT NULL,
+                errorDomain TEXT,
+                errorCode INTEGER
+            );
+            CREATE TABLE grdb_migrations (
+                identifier TEXT NOT NULL PRIMARY KEY
+            );
+            INSERT INTO grdb_migrations (identifier)
+                VALUES ('operation-ledger-v1');
+            INSERT INTO roots (
+                id, bookmark, bookmarkVersion, createdAt, updatedAt
+            ) VALUES ('legacy-root', X'010203', 1, 1, 1);
+            """)
+    }
+    try database.close()
 }
 
 private struct Fixture {

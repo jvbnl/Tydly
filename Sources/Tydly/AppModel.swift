@@ -193,10 +193,20 @@ final class AppModel: ObservableObject {
 
     func hasRequiredFolderCapabilities() async -> Bool {
         do {
-            return try await capabilityStore().hasActiveBindings([
+            let store = try capabilityStore()
+            let required: Set<String> = [
                 "source.desktop",
                 "source.downloads"
-            ])
+            ]
+            guard try await store.hasActiveBindings(required) else {
+                return false
+            }
+            for logicalRootID in required {
+                _ = try await store.withResolvedRoot(logicalRootID: logicalRootID) { _, _ in
+                    true
+                }
+            }
+            return true
         } catch {
             return false
         }
