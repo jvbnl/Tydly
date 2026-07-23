@@ -52,8 +52,7 @@ popover.
 
 Xcode's canvas previews aren't part of this workflow, so debug builds include an in-app
 switcher at the foot of the popover: **All tidy · Decision · Working · Observing**, plus
-**Replay onboarding**. It is compiled out of release builds (`#if DEBUG`). `#Preview` blocks
-also exist for anyone who does open the package in Xcode.
+**Replay onboarding**. It is compiled out of release builds (`#if DEBUG`).
 
 ## Architecture
 
@@ -99,7 +98,6 @@ skipped decisions self-mute. The full list is in `DesignHandoff/CLAUDE.md` and t
 
 ## Note on the build environment
 
-The scaffold was authored in a Linux CI container that has no macOS SDK, so it has **not yet
-been compiled** — SwiftUI/AppKit only build on a Mac. It is written to build cleanly with
-`swift build` on macOS 13+; the first real compile happens on your machine. If anything
-doesn't build on first try, that's expected scaffolding shakeout, not a design gap.
+The package is verified on macOS 14 with Apple Swift 5.10: `swift build`, all 13
+`TydlyCore` tests, release app assembly, and a detached app-bundle launch pass. Interactive
+menu-bar behavior and pixel fidelity still need checking on a logged-in Mac with `make run`.
