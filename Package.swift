@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 import PackageDescription
 
 // Tydly — a local, trust-earning file archivist that lives in the macOS menu bar.
@@ -7,27 +7,34 @@ import PackageDescription
 //   • TydlyCore  — pure Foundation. Domain model + the rule-enforcement logic for the
 //                  ten non-negotiable product rules. No SwiftUI, AppKit, or Combine, so
 //                  it stays unit-testable and portable to other platforms later.
+//   • TydlyAI    — the constrained, fully local Foundation Models adapter. It can rank
+//                  allowlisted projects but has no filesystem or networking capabilities.
 //   • Tydly      — the macOS executable. SwiftUI `MenuBarExtra` + a thin AppKit
-//                  `AppDelegate` for the onboarding window. Depends on TydlyCore.
+//                  `AppDelegate` for the onboarding window.
 //
 // Built and run entirely from the command line (see the Makefile) — no Xcode project.
 let package = Package(
     name: "Tydly",
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v13) // MenuBarExtra requires macOS 13 (Ventura).
+        .macOS(.v26) // Foundation Models requires macOS 26 and Apple Intelligence hardware.
     ],
     products: [
         .executable(name: "Tydly", targets: ["Tydly"]),
-        .library(name: "TydlyCore", targets: ["TydlyCore"])
+        .library(name: "TydlyCore", targets: ["TydlyCore"]),
+        .library(name: "TydlyAI", targets: ["TydlyAI"])
     ],
     targets: [
         .target(
             name: "TydlyCore"
         ),
+        .target(
+            name: "TydlyAI",
+            dependencies: ["TydlyCore"]
+        ),
         .executableTarget(
             name: "Tydly",
-            dependencies: ["TydlyCore"],
+            dependencies: ["TydlyCore", "TydlyAI"],
             // Info.plist / entitlements live beside the sources but are not Swift sources
             // or bundle resources — the linker flag below embeds the plist, and the app
             // bundle script copies both. Excluding them keeps `swift build` warning-free.
@@ -53,6 +60,10 @@ let package = Package(
         .testTarget(
             name: "TydlyCoreTests",
             dependencies: ["TydlyCore"]
+        ),
+        .testTarget(
+            name: "TydlyAITests",
+            dependencies: ["TydlyAI", "TydlyCore"]
         )
     ]
 )

@@ -6,6 +6,7 @@ import TydlyCore
 /// user-facing state machine; the rule *logic* lives in `TydlyCore.Rules`. There is no
 /// file engine yet, so intents mutate in-memory state — enough for the scaffold to feel
 /// live and for every screen to be reachable.
+@MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
 

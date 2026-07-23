@@ -3,7 +3,7 @@ import Foundation
 /// The archivist's top-level state. Drives both the menu-bar icon and which body
 /// the popover shows. Mirrors README.md §State Management:
 /// `observing | working | idle-tidy | needs-decision(count) | paused(until) | error(kind)`.
-public enum AgentState: Equatable {
+public enum AgentState: Equatable, Sendable {
     /// First-run reading pass — "Reading, changing nothing". Blue pulse, files untouched.
     case observing
 
@@ -25,7 +25,7 @@ public enum AgentState: Equatable {
 
 /// What the menu-bar glyph shows. One color each; see DESIGN.md color semantics
 /// (green = tidy, blue = working, amber = waiting-on-user, grey = paused, red = broken).
-public enum IconState: Equatable {
+public enum IconState: Equatable, Sendable {
     case quiet                    // plain glyph, no animation
     case working                  // blue badge dot, 1.6s pulse while analyzing
     case needsYou(count: Int)     // amber count badge
@@ -57,14 +57,14 @@ public extension AgentState {
 }
 
 /// How long a pause lasts. Rendered in Settings as "Until 5 pm · tomorrow · manually".
-public enum PauseUntil: Equatable {
+public enum PauseUntil: Equatable, Sendable {
     case time(String)   // e.g. "5 pm"
     case tomorrow
     case manual
 }
 
 /// The kinds of breakage Otto surfaces. Held work is never dropped (Rule, Phase 05).
-public enum ErrorKind: Equatable {
+public enum ErrorKind: Equatable, Sendable {
     /// A destination folder was renamed or deleted; queued moves are held, not lost.
     case brokenDestination(folderName: String, movesOnHold: Int)
 }

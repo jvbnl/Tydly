@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -23,6 +23,8 @@ jobs:
         run: swift test
       - name: Assemble app bundle
         run: make app
+      - name: Audit privacy boundary
+        run: ./Scripts/audit_privacy.sh
       - name: Smoke-test app bundle
         run: |
           set -euo pipefail
