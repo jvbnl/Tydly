@@ -149,7 +149,7 @@ final class RootCapabilityStoreTests: XCTestCase {
             ])
             XCTFail("invalid second selection must commit neither bookmark")
         } catch {
-            XCTAssertEqual(error as? RootCapabilityError, .wrongRequiredFolder)
+            XCTAssertEqual(error as? RootCapabilityError, .overlapsExistingRoot)
         }
         let bindingsAfterFailure = try await fixture.ledger.rootBindings()
         XCTAssertTrue(bindingsAfterFailure.isEmpty)
