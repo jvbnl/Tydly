@@ -9,6 +9,9 @@ import PackageDescription
 //                  it stays unit-testable and portable to other platforms later.
 //   • TydlyAI    — the constrained, fully local Foundation Models adapter. It can rank
 //                  allowlisted projects but has no filesystem or networking capabilities.
+//   • TydlyAgent — Otto's orchestration loop. Pure Foundation: it reasons over path-free
+//                  evidence references, never touches the filesystem, and never issues an
+//                  execution capability.
 //   • TydlyPersistence — the encrypted SQLCipher operation ledger and Keychain key store.
 //   • Tydly      — the macOS executable. SwiftUI `MenuBarExtra` + a thin AppKit
 //                  `AppDelegate` for the onboarding window.
@@ -25,6 +28,7 @@ let package = Package(
         .executable(name: "TydlyLedgerCrashProbe", targets: ["TydlyLedgerCrashProbe"]),
         .library(name: "TydlyCore", targets: ["TydlyCore"]),
         .library(name: "TydlyAI", targets: ["TydlyAI"]),
+        .library(name: "TydlyAgent", targets: ["TydlyAgent"]),
         .library(name: "TydlyPersistence", targets: ["TydlyPersistence"]),
         .library(name: "TydlyMacEngine", targets: ["TydlyMacEngine"])
     ],
@@ -44,6 +48,13 @@ let package = Package(
         ),
         .target(
             name: "TydlyAI",
+            dependencies: ["TydlyCore"]
+        ),
+        // Depends on TydlyCore only. The concrete Foundation Models engine and the encrypted
+        // memory store are injected by the app layer, so the agent stays pure Foundation and
+        // every orchestration path is testable without Apple Intelligence or a disk.
+        .target(
+            name: "TydlyAgent",
             dependencies: ["TydlyCore"]
         ),
         .target(
@@ -70,7 +81,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "Tydly",
-            dependencies: ["TydlyCore", "TydlyAI", "TydlyPersistence", "TydlyMacEngine"],
+            dependencies: [
+                "TydlyCore",
+                "TydlyAI",
+                "TydlyAgent",
+                "TydlyPersistence",
+                "TydlyMacEngine"
+            ],
             // Info.plist / entitlements live beside the sources but are not Swift sources
             // or bundle resources — the linker flag below embeds the plist, and the app
             // bundle script copies both. Excluding them keeps `swift build` warning-free.
@@ -102,6 +119,10 @@ let package = Package(
         .testTarget(
             name: "TydlyAITests",
             dependencies: ["TydlyAI", "TydlyCore"]
+        ),
+        .testTarget(
+            name: "TydlyAgentTests",
+            dependencies: ["TydlyAgent", "TydlyCore"]
         ),
         .testTarget(
             name: "TydlyPersistenceTests",

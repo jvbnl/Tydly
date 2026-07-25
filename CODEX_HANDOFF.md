@@ -1,6 +1,22 @@
 # Codex handoff — build the first working Tydly alpha
 
-Last updated: 23 July 2026
+Last updated: 25 July 2026
+
+> **Progress note (25 July 2026).** Step 1 of "Implementation order" is done:
+> `Documentation/PRODUCT_VISION.md` now exists, `Documentation/AI_ENGINE.md` no longer frames
+> the model as optional, and `Sources/TydlyAgent/` + `Tests/TydlyAgentTests/` define the
+> orchestration contract (posture and watch-only reasons, one-sweep-at-a-time admission with
+> cancellation and thermal/Low Power deferral, typed evidence references, immutable plans with
+> a canonical digest payload, and the agent-memory protocols). The agent is **not yet wired to
+> the UI** and `AppModel` still seeds `SampleData`.
+>
+> **Ordering change approved by the owner:** steps 2 and 3 are swapped. Scoped inventory plus a
+> **metadata-only** evidence path lands before the isolated XPC content extractor, so a real
+> proposal reaches the user sooner. Metadata-only extraction parses no file contents, so the
+> attack surface AH-76 exists to isolate is not yet present; coverage stays `partial`,
+> sensitivity stays `unknown`, and every proposal therefore stays ask-first. AH-76 then adds
+> content evidence behind the same `EvidenceBundleReference` contract. See `AGENTS.md`
+> §Next phases for the full statement of the decision and its constraints.
 
 ## Mission
 

@@ -35,9 +35,10 @@ These are enforced in `Sources/TydlyCore/Rules.swift` and pinned by `Tests/Tydly
 - **macOS 26 on Apple silicon.** The owner approved raising the minimum so semantic
   classification can use Apple's on-device Foundation Models framework. Swift 6.2 and the
   macOS 26 SDK are required; no cloud fallback is allowed.
-- **Five targets.** `TydlyCore` (pure policy), `TydlyAI` (tool-free local model),
-  `TydlyPersistence` (encrypted ledger), `TydlyMacEngine` (scoped macOS capabilities), and
-  `Tydly` (SwiftUI/AppKit UI). Keep UI-agnostic logic in Core and English in Localization.
+- **Six targets.** `TydlyCore` (pure policy), `TydlyAI` (tool-free local model), `TydlyAgent`
+  (Otto's orchestration loop), `TydlyPersistence` (encrypted ledger), `TydlyMacEngine` (scoped
+  macOS capabilities), and `Tydly` (SwiftUI/AppKit UI). Keep UI-agnostic logic in Core and
+  English in Localization.
 - **`MenuBarExtra` (`.window` style)** for icon + popover; a thin AppKit `AppDelegate` owns
   windows/panels that sit outside the scene (onboarding now; whisper `NSPanel` next).
 - **Menu-bar glyph** is a programmatically rendered *template* `NSImage` (`MenuGlyph`) so
@@ -54,6 +55,10 @@ These are enforced in `Sources/TydlyCore/Rules.swift` and pinned by `Tests/Tydly
   tools, and returns allowlisted IDs only. Deterministic `TydlyCore` policy owns sensitivity,
   consent, autonomy, resting mode, confidence, execution, and undo. See
   `Documentation/AI_ENGINE.md`.
+- **Otto is the product.** `Documentation/PRODUCT_VISION.md` is the product source of truth.
+  `TydlyAgent` owns the orchestration loop (perceive → remember → reason → plan → demonstrate
+  → act → learn); it never touches the filesystem and never issues an execution capability.
+  When the local model is unavailable Otto is watch-only — never a cloud fallback.
 
 ## Conventions
 
