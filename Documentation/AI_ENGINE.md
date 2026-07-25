@@ -1,18 +1,26 @@
 # Tydly local AI engine
 
-Last reviewed: 23 July 2026
+Last reviewed: 25 July 2026
 
 ## Decision
 
-Tydly now targets macOS 26 or later on Apple-silicon Macs and uses Apple's
-`FoundationModels` framework for optional semantic adjudication. The system language model
-is on-device, works offline after macOS has prepared its assets, adds no bundled model
-weights, and avoids a third-party inference runtime.
+Tydly targets macOS 26 or later on Apple-silicon Macs and uses Apple's `FoundationModels`
+framework for semantic adjudication. The system language model is on-device, works offline
+after macOS has prepared its assets, adds no bundled model weights, and avoids a third-party
+inference runtime.
 
-The AI feature still checks `SystemLanguageModel.availability` at runtime. Apple Intelligence
-can be disabled, the model can be not ready, or the device/locale can be ineligible. In those
-states Tydly remains safe and useful through deterministic extraction and ask-first
-proposals; it never falls back to cloud inference.
+**The model is required for novel project understanding, not an optional enhancement.**
+`Documentation/PRODUCT_VISION.md` is the authority here: Otto is the product, and recognising
+that unrelated-looking files belong to one project is what the user is buying. Deterministic
+retrieval alone can reuse what the user has already taught Otto; it cannot understand
+something new.
+
+The engine still checks `SystemLanguageModel.availability` at runtime. Apple Intelligence can
+be disabled, the model can be not ready, or the device/locale can be ineligible. In those
+states Otto becomes **watch-only**: no new semantic proposal and no move. Explicitly promoted
+rules may continue to reuse deterministic learned knowledge through the agent and the safety
+policy, and undo history and learned memory stay fully intact. There is never a cloud
+fallback.
 
 No Private Cloud Compute model, third-party provider, downloadable model, remote model hub,
 local HTTP model server, RPC endpoint, or networking entitlement is permitted.
@@ -26,15 +34,19 @@ FSEvents dirty hint
   -> sensitivity lattice
   -> deterministic candidate retrieval
   -> explainable ranker
-  -> optional local language-model reranker
+  -> local language-model reranking for the ambiguous remainder
   -> calibration and abstention
   -> pure TydlyCore policy gate
   -> immutable demonstration plan
   -> journaled execution
 ```
 
-The language model is not the agent. The agent is the deterministic pipeline and policy
-kernel around it.
+"Evidence first, model last" is an ordering rule, not a statement that the model is dispensable.
+Cheap deterministic evidence resolves the easy cases so that model invocation is reserved for
+genuine ambiguity — which is exactly where the product's value lives.
+
+The language model is not the agent. `TydlyAgent` is the agent: the deterministic orchestration
+loop and policy kernel around the model. The model is one bounded, advisory step inside it.
 
 ## Model responsibilities
 

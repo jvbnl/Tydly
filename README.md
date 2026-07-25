@@ -29,12 +29,18 @@ popover (all tidy / decision / working) → onboarding.**
 | Security-first execution policy + local Foundation Models boundary | ✅ foundation |
 | Encrypted operation ledger, inverse undo records, and crash reconciliation | ✅ foundation |
 | Encrypted security-scoped Desktop/Downloads capability generations | ✅ foundation |
+| Agent orchestration contract — posture, sweeps, plans, memory protocols | ✅ foundation |
+| Scoped inventory + metadata-only evidence → the first real decision | ⏳ next |
 | Finder demonstration, whisper bar, error states, rules pane, settings, weekly note | ⏳ next |
-| Real file engine (FSEvents, extraction, race-safe moves) | ⏳ next |
+| Real file engine (FSEvents, XPC extraction, race-safe moves) | ⏳ next |
 
 There is **no watcher or file mover yet** — state remains seeded from `SampleData`. The
-encrypted ledger can reconcile intent and onboarding can persist least-privilege folder
-grants, but nothing inventories or mutates user files.
+encrypted ledger can reconcile intent, onboarding can persist least-privilege folder grants,
+and `TydlyAgent` defines the orchestration loop, but nothing inventories or mutates user
+files and the agent is not yet wired to the UI.
+
+What Tydly is trying to be, and how Otto behaves when the local model is unavailable, is in
+[`Documentation/PRODUCT_VISION.md`](Documentation/PRODUCT_VISION.md).
 
 ## Requirements
 
@@ -65,12 +71,15 @@ switcher at the foot of the popover: **All tidy · Decision · Working · Observ
 
 ## Architecture
 
-Five targets keep policy testable and prevent the model from receiving filesystem powers:
+Six targets keep policy testable and prevent the model from receiving filesystem powers:
 
 - **`TydlyCore`** — pure Foundation. Domain types (`AgentState`, `FilingRule`, `Decision`,
   …), path-free AI contracts, and rule/execution policy. No SwiftUI, AppKit, or Combine.
 - **`TydlyAI`** — the constrained, tool-free adapter to Apple's on-device Foundation Models
   framework. It returns allowlisted project and evidence IDs only.
+- **`TydlyAgent`** — Otto's orchestration loop: posture and watch-only reasons, one sweep at a
+  time with cancellation and idle deferral, typed path-free evidence, immutable plans, and the
+  agent-memory protocols. It never touches the filesystem and never authorizes execution.
 - **`TydlyPersistence`** — the single-writer SQLCipher ledger and Keychain key store. It
   records authorization, relative-path intent, transitions, inverse undo, and repair state,
   but owns no move API. Authorization is bound to the exact batch digest and authenticated
@@ -85,6 +94,7 @@ Five targets keep policy testable and prevent the model from receiving filesyste
 Sources/
   TydlyCore/         AgentState · Domain · Rules · AIContracts · ExecutionPolicy · SampleData
   TydlyAI/           FoundationModelClassifier
+  TydlyAgent/        AgentPosture · AgentEvidence · AgentMemory · AgentPlan · TydlyAgent
   TydlyPersistence/  DatabaseKeyStore · EncryptedOperationLedger · quarantine
   TydlyMacEngine/    Bookmark adapters · root policy · capability store
   Tydly/
@@ -99,6 +109,7 @@ Sources/
 Tests/
   TydlyCoreTests/             Rules · State · ExecutionPolicy
   TydlyAITests/               Allowlist · sensitivity · prompt-boundary validation
+  TydlyAgentTests/            Posture · sweep admission/cancellation · plan digest
   TydlyPersistenceTests/      Encryption · recovery · inverse undo · backup · quarantine
   TydlyMacEngineTests/        Policy · atomic selection · stale/revoked access · CAS
 ```
